@@ -38,7 +38,9 @@ h1 em{font-style:normal;color:var(--accent)}
 .top-actions{display:flex;gap:8px;align-items:center}
 a{color:var(--accent)}
 
-.stage{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-bottom:12px;box-shadow:0 10px 16px 2px var(--bg)}
+.stage{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-bottom:12px;transition:box-shadow .2s}
+/* the soft edge only while the strip is stuck on top, so it never covers the buttons below it at rest */
+.stage.stuck{box-shadow:0 10px 16px 2px var(--bg)}
 .stage-box{background:var(--night);border:1px solid var(--line);border-radius:14px;max-height:44vh;overflow:auto}
 .stage canvas{display:block;width:100%}
 .stage-meta{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:8px;font-family:var(--f-mono);font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -1014,6 +1016,9 @@ $('share').addEventListener('click', () => {
   const done = () => { btn.textContent = t('linkCopied'); setTimeout(() => { btn.textContent = t('share'); }, 2000); };
   try { navigator.clipboard.writeText(url).then(done, () => window.prompt(t('linkPrompt'), url)); } catch (e) { window.prompt(t('linkPrompt'), url); }
 });
+const stageEl = document.querySelector('.stage');
+function markStuck() { const top = parseFloat(getComputedStyle(stageEl).top) || 0; stageEl.classList.toggle('stuck', window.scrollY > 0 && stageEl.getBoundingClientRect().top <= top + 0.5); }
+window.addEventListener('scroll', markStuck, { passive: true }); window.addEventListener('resize', markStuck);
 let lastW = 0;
 new ResizeObserver(() => { const w = box.clientWidth; if (w === lastW) return; lastW = w; layout(); drawMeta(); }).observe(box);
 
