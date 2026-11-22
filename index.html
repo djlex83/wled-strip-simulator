@@ -38,6 +38,7 @@ h1 em{font-style:normal;color:var(--accent)}
 .top-actions{display:flex;gap:8px;align-items:center}
 a{color:var(--accent)}
 
+[hidden]{display:none!important}
 .stage{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-bottom:12px;transition:box-shadow .2s}
 /* the soft edge only while the strip is stuck on top, so it never covers the buttons below it at rest */
 .stage.stuck{box-shadow:0 10px 16px 2px var(--bg)}
@@ -128,10 +129,16 @@ pre{margin:0;padding:10px 12px;background:var(--night);border:1px solid var(--li
       <section class="panel" aria-labelledby="h-strip">
         <h2 id="h-strip" data-i18n="strip"></h2>
         <div class="row">
-          <div class="field"><span class="lbl" data-i18n="leds"></span><input type="number" id="count" min="1" max="1500" step="1"></div>
+          <div class="field"><span class="lbl" data-i18n="layout"></span>
+            <select id="mode"><option value="0" data-i18n="modeStrip"></option><option value="1" data-i18n="modeMatrix"></option></select></div>
           <div class="field"><span class="lbl" data-i18n="type"></span>
             <select id="rgbw"><option value="0">RGB</option><option value="1">RGBW</option></select></div>
-          <div class="field"><span class="lbl" data-i18n="perRow"></span><input type="number" id="perRow" min="0" max="1500" step="1"></div>
+        </div>
+        <div class="row">
+          <div class="field" id="f-count"><span class="lbl" data-i18n="leds"></span><input type="number" id="count" min="1" max="1500" step="1"></div>
+          <div class="field" id="f-perRow"><span class="lbl" data-i18n="perRow"></span><input type="number" id="perRow" min="0" max="1500" step="1"></div>
+          <div class="field" id="f-mw" hidden><span class="lbl" data-i18n="mw"></span><input type="number" id="mw" min="1" max="128" step="1"></div>
+          <div class="field" id="f-mh" hidden><span class="lbl" data-i18n="mh"></span><input type="number" id="mh" min="1" max="128" step="1"></div>
         </div>
         <div class="slider"><span class="lbl" data-i18n="brightness"></span><input type="range" id="bri" min="0" max="255"><output id="briOut"></output></div>
         <label class="check"><input type="checkbox" id="gamma"> <span data-i18n="gamma"></span></label>
@@ -147,6 +154,7 @@ pre{margin:0;padding:10px 12px;background:var(--night);border:1px solid var(--li
       <section class="panel" aria-labelledby="h-json">
         <h2 id="h-json" data-i18n="json"></h2>
         <p class="hint" data-i18n="exportHint"></p>
+        <p class="hint" id="m2dHint" data-i18n="m2dHint" hidden></p>
         <pre id="out" tabindex="0"></pre>
         <div class="row"><button class="btn small" id="copy" type="button" data-i18n="copy"></button><p class="msg" id="copyMsg" hidden></p></div>
         <span class="lbl" data-i18n="import"></span>
@@ -169,12 +177,15 @@ pre{margin:0;padding:10px 12px;background:var(--night);border:1px solid var(--li
 const T = {
   en: {
     title: 'LED Strip <em>Simulator</em>',
-    sub: 'For WLED: split a strip into segments, give each one a WLED effect and copy the JSON to your WLED. The effects calculate like in WLED 16, with gamma 2.8 on every pixel.',
+    sub: 'For WLED: split a strip or a 2D matrix into segments, give each one a WLED effect and copy the JSON to your WLED. The effects calculate like in WLED 16, with gamma 2.8 on every pixel.',
     segments: 'Segments', addSeg: 'Add segment', restartAll: 'Restart all', strip: 'Strip', leds: 'LEDs', type: 'Type',
     perRow: 'LEDs per row', brightness: 'Brightness', gamma: 'Gamma correction 2.8 (WLED default)', examples: 'Examples',
     split: 'Split into', splitBtn: 'Split into equal segments', json: 'JSON for WLED',
     exportHint: 'Send it to POST /json/state on your WLED. Effects and palettes carry their WLED numbers.',
     copy: 'Copy', copied: 'Copied.', selected: 'Text is selected, press Ctrl+C or ⌘C.',
+    layout: 'Layout', modeStrip: 'Strip', modeMatrix: 'Matrix (2D)', mw: 'Width', mh: 'Height', startX: 'Start X', stopX: 'Stop X', startY: 'Start Y', stopY: 'Stop Y',
+    m12: 'Expand 1D effect', m12n: ['Pixels', 'Bar', 'Arc', 'Corner'], metaM: '{w} × {h} matrix · {c} LEDs · {s} segments',
+    m2dHint: 'The matrix size itself is set in WLED under Config → 2D Configuration; the JSON holds the segments with startY, stopY and m12.',
     share: 'Copy link', linkCopied: 'Link copied', linkPrompt: 'Copy this link:', linkBad: 'This link could not be read, the example is shown instead.',
     import: 'Import from WLED', importHint: 'Paste the result of http://<your-wled>/json/state or an entry of presets.json.', apply: 'Apply',
     importOk: 'Applied: {n} segments.', importErr: 'This is not valid JSON: {m}', unknownFx: 'Effects this simulator does not have are shown as Solid: {l}.', unknownPal: 'Palettes it does not have use Default: {l}.', noSegIn: 'No segment with start < stop found.',
@@ -183,16 +194,19 @@ const T = {
     builtin: 'WLED effects', approx: 'approx.', ledsShort: 'LEDs', meta: '{c} LEDs · {s} segments · {r} rows',
     langBtn: 'Deutsch', white: 'W',
     foot: 'The effects are re-written in JavaScript after the WLED 16 source code. Rain, Twinklefox and the two fireworks (≈) are approximations, and effects with random parts never repeat exactly. Colours on a screen are an impression, real LEDs are brighter and more saturated. An independent project, not part of WLED.',
-    ex: { tour: 'A tour: six effects', fire: 'Fire 2012 with the Fire palette', scanner: 'Scanner with two dots', theater: 'Theater lights, warm white', waves: 'Pride 2015 and Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', pick: 'Choose an example…' },
+    ex: { tour: 'A tour: six effects', fire: 'Fire 2012 with the Fire palette', scanner: 'Scanner with two dots', theater: 'Theater lights, warm white', waves: 'Pride 2015 and Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', m_hole: '2D: Black Hole, 16 × 16', m_rain: '2D: Matrix rain, 32 × 16', m_mix: '2D: Octopus and Plasma Ball', m_fire: '2D: Fire 2012 rising (1D effect as Bar)', m_noise: '2D: Noise2D with the Ocean palette', pick: 'Choose an example…' },
   },
   de: {
     title: 'LED-Streifen-<em>Simulator</em>',
-    sub: 'Für WLED: Streifen in Segmente teilen, jedem einen WLED-Effekt geben und das JSON zur WLED mitnehmen. Die Effekte rechnen wie in WLED 16, mit Gamma 2,8 auf jedem Pixel.',
+    sub: 'Für WLED: Streifen oder 2D-Matrix in Segmente teilen, jedem einen WLED-Effekt geben und das JSON zur WLED mitnehmen. Die Effekte rechnen wie in WLED 16, mit Gamma 2,8 auf jedem Pixel.',
     segments: 'Segmente', addSeg: 'Segment hinzufügen', restartAll: 'Alle neu starten', strip: 'Streifen', leds: 'LEDs', type: 'Typ',
     perRow: 'LEDs pro Reihe', brightness: 'Helligkeit', gamma: 'Gamma-Korrektur 2,8 (WLED-Standard)', examples: 'Beispiele',
     split: 'Teilen in', splitBtn: 'In gleiche Segmente teilen', json: 'JSON für WLED',
     exportHint: 'Per POST an /json/state deiner WLED senden. Effekte und Paletten stehen mit ihrer WLED-Nummer drin.',
     copy: 'Kopieren', copied: 'Kopiert.', selected: 'Text ist markiert, mit Strg+C oder ⌘C kopieren.',
+    layout: 'Aufbau', modeStrip: 'Streifen', modeMatrix: 'Matrix (2D)', mw: 'Breite', mh: 'Höhe', startX: 'Start X', stopX: 'Stop X', startY: 'Start Y', stopY: 'Stop Y',
+    m12: '1D-Effekt ausdehnen', m12n: ['Pixels', 'Bar', 'Arc', 'Corner'], metaM: '{w} × {h} Matrix · {c} LEDs · {s} Segmente',
+    m2dHint: 'Die Matrix-Größe selbst stellst du in WLED unter Config → 2D Configuration ein; das JSON enthält die Segmente mit startY, stopY und m12.',
     share: 'Link kopieren', linkCopied: 'Link kopiert', linkPrompt: 'Diesen Link kopieren:', linkBad: 'Dieser Link ließ sich nicht lesen, stattdessen ist das Beispiel zu sehen.',
     import: 'Aus WLED übernehmen', importHint: 'Inhalt von http://<deine-wled>/json/state oder einen Eintrag aus presets.json einfügen.', apply: 'Übernehmen',
     importOk: 'Übernommen: {n} Segmente.', importErr: 'Das ist kein gültiges JSON: {m}', unknownFx: 'Effekte, die der Simulator nicht kennt, sind als Solid gezeigt: {l}.', unknownPal: 'Paletten, die er nicht kennt, nutzen Default: {l}.', noSegIn: 'Kein Segment mit Start < Stop gefunden.',
@@ -201,7 +215,7 @@ const T = {
     builtin: 'WLED-Effekte', approx: 'angenähert', ledsShort: 'LEDs', meta: '{c} LEDs · {s} Segmente · {r} Reihen',
     langBtn: 'English', white: 'W',
     foot: 'Die Effekte sind nach dem Quelltext von WLED 16 in JavaScript nachgebaut. Rain, Twinklefox und die beiden Feuerwerke (≈) sind angenähert, und Effekte mit Zufall wiederholen sich nie genau. Farben auf dem Bildschirm sind ein Eindruck, echte LEDs sind heller und satter. Ein unabhängiges Projekt, kein Teil von WLED.',
-    ex: { tour: 'Rundgang: sechs Effekte', fire: 'Fire 2012 mit der Fire-Palette', scanner: 'Scanner mit zwei Punkten', theater: 'Lauflicht, warmweiß', waves: 'Pride 2015 und Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', pick: 'Beispiel wählen …' },
+    ex: { tour: 'Rundgang: sechs Effekte', fire: 'Fire 2012 mit der Fire-Palette', scanner: 'Scanner mit zwei Punkten', theater: 'Lauflicht, warmweiß', waves: 'Pride 2015 und Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', m_hole: '2D: Black Hole, 16 × 16', m_rain: '2D: Matrix-Regen, 32 × 16', m_mix: '2D: Octopus und Plasma Ball', m_fire: '2D: Fire 2012 steigt auf (1D-Effekt als Bar)', m_noise: '2D: Noise2D mit Ocean-Palette', pick: 'Beispiel wählen …' },
   },
 };
 let lang = 'en';
@@ -222,12 +236,6 @@ const cos8 = x => Math.round(128 + 127 * Math.cos(x / 256 * 2 * Math.PI));
 const tri16 = x => { x = Math.floor(x) & 0xFFFF; return x < 0x8000 ? x * 2 : 0xFFFF - (x - 0x8000) * 2; };
 function hashU(i) { let x = Math.imul(i, 2654435761 | 0) >>> 0; x ^= x >>> 16; x = Math.imul(x, 0x7feb352d) >>> 0; x ^= x >>> 15; x = Math.imul(x, 0x846ca68b | 0) >>> 0; x ^= x >>> 16; return x >>> 0; }
 const hashF = n => hashU(n) / 4294967296;
-function perlin8(x, y) {
-  const xi = x >> 8, yi = y >> 8, xf = (x & 255) / 256, yf = (y & 255) / 256, sx = xf * xf * (3 - 2 * xf), sy = yf * yf * (3 - 2 * yf);
-  const h = (a, b) => (hashU(((a & 0xFF) * 374761 + (b & 0xFFFF) * 668265) | 0) & 255);
-  const a = h(xi, yi), b = h(xi + 1, yi), c = h(xi, yi + 1), d = h(xi + 1, yi + 1), top = a + (b - a) * sx, bot = c + (d - c) * sx;
-  return 16 + (top + (bot - top) * sy) * 224 / 255;
-}
 /* ================= palettes (as in WLED 16, palettes.cpp) ================= */
 const HX = a => a.map(h => [h >> 16 & 255, h >> 8 & 255, h & 255, 0]);
 const P16 = {
@@ -298,7 +306,7 @@ function sin16(theta) {
   theta &= 0xFFFF; let sc = 1; if (theta > 0x7FFF) { theta = 0xFFFF - theta; sc = -1; }
   const pre = theta * (0x7FFF - theta); return sc * Math.trunc(pre * (4 * 0x7FFF) / (1342095361 - pre));
 }
-const sin8w = x => (sin16((x & 255) * 257) + 32767) >> 8;
+const sin8w = x => Math.min(sin16((x & 255) * 257) + 0x7FFF + 128, 0xFFFF) >> 8;   // sin8_t
 const scale16 = (i, s) => Math.floor(i * (1 + s) / 65536);
 const beat88 = (bpm88, t) => Math.imul(Math.imul(t >>> 0, bpm88), 280) >>> 16;                 // 32-bit wrap like millis()
 const beatsin88 = (bpm88, lo, hi, t) => (lo + scale16((sin16(beat88(bpm88, t)) + 32768) & 0xFFFF, (hi - lo) & 0xFFFF)) & 0xFFFF;
@@ -676,6 +684,210 @@ add(92, 'Sinelon@!,Trail;!,!,!;!', (s, t) => {
   st.aux0 = pos;
 });
 
+/* ================= 2D maths (WLED 16) ================= */
+// perlin8 from util.cpp: fixed-point Perlin noise by @dedehai
+const hashGrad = h => (h & 0x03) - 2;
+function grad2(x0, dx, y0, dy) {
+  let h = (Math.imul(x0, 0x27D4EB2D) ^ Math.imul(y0, 0xB5297A4D)) >>> 0; h ^= h >>> 15; h = Math.imul(h, 0x92C3412B) >>> 0; h ^= h >>> 13;
+  return (hashGrad(h) * dx + hashGrad(h >>> 1) * dy) >> 2;
+}
+function grad3(x0, dx, y0, dy, z0, dz) {
+  let h = (Math.imul(x0, 0x27D4EB2D) ^ Math.imul(y0, 0xB5297A4D) ^ Math.imul(z0, 0x1B56C4E9)) >>> 0; h ^= h >>> 15; h = Math.imul(h, 0x92C3412B) >>> 0; h ^= h >>> 13;
+  return ((hashGrad(h) * dx + hashGrad(h >>> 2) * dy + hashGrad(h >>> 3) * dz) * 85) >> 9;
+}
+const smoothstep = t => { const sq = Math.floor(t * t / 65536), f = (3 << 16) - (t << 1); return Math.floor(sq * f / 262144); };
+const lerpP = (a, b, t) => a + (((b - a) * t) >> 14);
+function perlin2raw(x, y) {
+  const x0 = x >>> 16, y0 = y >>> 16, x1 = (x0 + 1) & 0xFF, y1 = (y0 + 1) & 0xFF, dx0 = x & 0xFFFF, dy0 = y & 0xFFFF, dx1 = dx0 - 0x10000, dy1 = dy0 - 0x10000;
+  const tx = smoothstep(dx0), ty = smoothstep(dy0);
+  return lerpP(lerpP(grad2(x0, dx0, y0, dy0), grad2(x1, dx1, y0, dy0), tx), lerpP(grad2(x0, dx0, y1, dy1), grad2(x1, dx1, y1, dy1), tx), ty);
+}
+function perlin3raw(x, y, z) {
+  const x0 = x >>> 16, y0 = y >>> 16, z0 = z >>> 16, x1 = (x0 + 1) & 0xFF, y1 = (y0 + 1) & 0xFF, z1 = (z0 + 1) & 0xFF;
+  const dx0 = x & 0xFFFF, dy0 = y & 0xFFFF, dz0 = z & 0xFFFF, dx1 = dx0 - 0x10000, dy1 = dy0 - 0x10000, dz1 = dz0 - 0x10000;
+  const tx = smoothstep(dx0), ty = smoothstep(dy0), tz = smoothstep(dz0);
+  const nx0 = lerpP(grad3(x0, dx0, y0, dy0, z0, dz0), grad3(x1, dx1, y0, dy0, z0, dz0), tx);
+  const nx1 = lerpP(grad3(x0, dx0, y1, dy1, z0, dz0), grad3(x1, dx1, y1, dy1, z0, dz0), tx);
+  const nx2 = lerpP(grad3(x0, dx0, y0, dy0, z1, dz1), grad3(x1, dx1, y0, dy0, z1, dz1), tx);
+  const nx3 = lerpP(grad3(x0, dx0, y1, dy1, z1, dz1), grad3(x1, dx1, y1, dy1, z1, dz1), tx);
+  return lerpP(lerpP(nx0, nx1, ty), lerpP(nx2, nx3, ty), tz);
+}
+const perlin8 = (x, y) => ((((perlin2raw(((x & 0xFFFF) << 8) >>> 0, ((y & 0xFFFF) << 8) >>> 0) * 1620) >> 10) + 32771) >> 8) & 255;
+const perlin8_3 = (x, y, z) => ((((perlin3raw(((x & 0xFFFF) << 8) >>> 0, ((y & 0xFFFF) << 8) >>> 0, ((z & 0xFFFF) << 8) >>> 0) * 2015) >> 10) + 33168) >> 8) & 255;
+const cos8w = x => sin8w(x + 64);
+const beat8 = (bpm, t) => beat88((bpm & 0xFFFF) < 256 ? (bpm & 0xFFFF) << 8 : bpm & 0xFFFF, t) >> 8;
+// beatsin8_t(bpm, lowest, highest, 0, phase) with uint8 wrap-around like in C
+const bs8 = (t, bpm, lo = 0, hi = 255, phase = 0) => (lo + scale8(sin8w((beat8(bpm, t) + phase) & 255), (hi - lo) & 255)) & 255;
+function sqrt32(x) { x >>>= 0; let res = 0, bit = x < 1 << 10 ? 1 << 10 : x < 1 << 20 ? 1 << 20 : 1 << 30; while (bit > x) bit >>>= 2;
+  while (bit) { if (x >= res + bit) { x -= res + bit; res = (res >>> 1) + bit; } else res >>>= 1; bit >>>= 2; } return res; }
+function atan2t(y, x) {      // atan2_t from wled_math.cpp
+  const ay = Math.abs(y), ax = Math.abs(x); let r = (ax - ay) / (ay + ax + 1e-10), a;
+  if (x < 0) { r = -r; a = Math.PI / 2 + Math.PI / 4; } else a = Math.PI / 2 - Math.PI / 4;
+  a += (0.1963 * r * r - 0.9817) * r; return y < 0 ? -a : a;
+}
+const ginv8 = v => strip.gamma ? Math.round(GINV[v]) : v;   // gamma8inv
+const WHITE = [255, 255, 255, 0];
+const curPal = s => pal16(s.sp, s.sp.pal || defPal(s.sp));    // SEGPALETTE
+
+/* ================= 2D pixel helpers ================= */
+function putXY(s, x, y, c) { if (x < 0 || y < 0 || x >= s.W || y >= s.H) return; put(s, y * s.W + x, c); }
+// color_add: saturating, or keeping the colour ratio (addPixelColorXY default)
+function colorAdd(a, b, keepRatio) {
+  const c = [a[0] + b[0], a[1] + b[1], a[2] + b[2], (a[3] || 0) + (b[3] || 0)], m = Math.max(c[0], c[1], c[2], c[3]);
+  if (m <= 255) return c; if (!keepRatio) return c.map(v => Math.min(255, v));
+  const k = Math.floor((255 << 8) / m); return c.map(v => (v * k) >> 8);
+}
+function addXY(s, x, y, c, keepRatio = true) { if (x < 0 || y < 0 || x >= s.W || y >= s.H) return; const i = y * s.W + x; put(s, i, colorAdd(getPx(s, i), c, keepRatio)); }
+// Segment::fadeToBlackBy: fast_color_scale(c, 255 - by)
+function fadeToBlackBy(s, by) { if (!by) return; const k = 255 - (by & 255), p = s.px; for (let i = 0; i < p.length; i++) p[i] = (Math.round(p[i]) * k) >> 8; }
+// Segment::blur2D
+function blur2d(s, bx, by, smear) {
+  const W = s.W, H = s.H, sc = (c, k) => c.map(v => (Math.round(v) * k) >> 8);
+  const pass = (n, m, at, amt) => {
+    if (!amt) return; const keep = smear ? 255 : 255 - amt, seep = amt >> 1;
+    for (let a = 0; a < m; a++) {
+      let cur = getPx(s, at(0, a)), carry = sc(cur, seep); put(s, at(0, a), sc(cur, keep));
+      for (let b = 1; b < n; b++) {
+        cur = getPx(s, at(b, a)); const part = sc(cur, seep); cur = colorAdd(sc(cur, keep), carry, false);
+        put(s, at(b - 1, a), colorAdd(getPx(s, at(b - 1, a)), part, false)); put(s, at(b, a), cur); carry = part;
+      }
+    }
+  };
+  pass(W, H, (x, y) => y * W + x, bx & 255);       // rows
+  pass(H, W, (y, x) => y * W + x, by & 255);       // columns
+}
+const blur = (s, amt, smear) => blur2d(s, amt, amt, smear);
+
+/* ================= 2D effects (numbers as in WLED 16) ================= */
+add(183, 'Black Hole@Fade rate,Outer Y freq.,Outer X freq.,Inner X freq.,Inner Y freq.,Solid,,Blur;!;!;2;pal=11', (s, t) => {
+  const sp = s.sp, W = s.W, H = s.H; fadeToBlackBy(s, 16 + (sp.sx >> 3)); const tt = Math.floor(t / 128);
+  for (let i = 0; i < 8; i++) addXY(s, bs8(t, sp.c1 >> 3, 0, W - 1, ((i % 2) ? 128 : 0) + tt * i), bs8(t, sp.ix >> 3, 0, H - 1, ((i % 2) ? 192 : 64) + tt * i), cfp(s, i * 32, false, sp.o1 ? 0 : 255));
+  for (let i = 0; i < 4; i++) addXY(s, bs8(t, sp.c2 >> 3, W >> 2, W - 1 - (W >> 2), ((i % 2) ? 128 : 0) + tt * i), bs8(t, sp.c3, H >> 2, H - 1 - (H >> 2), ((i % 2) ? 192 : 64) + tt * i), cfp(s, 255 - i * 64, false, sp.o1 ? 0 : 255));
+  putXY(s, W >> 1, H >> 1, WHITE);
+  if (sp.o3) blur(s, 16, W * H < 100);
+});
+add(152, 'DNA@Scroll speed,Blur,,,,Smear;;!;2;ix=0', (s, t) => {
+  const sp = s.sp, W = s.W, H = s.H, p = curPal(s), t17 = Math.floor(t / 17); fadeToBlackBy(s, 64);
+  for (let i = 0; i < W; i++) {
+    putXY(s, i, bs8(t, sp.sx >> 3, 0, H - 1, i * 4), cfpal(p, i * 5 + t17, bs8(t, 5, 55, 255, i * 10), 1));
+    putXY(s, i, bs8(t, sp.sx >> 3, 0, H - 1, i * 4 + 128), cfpal(p, i * 5 + 128 + t17, bs8(t, 5, 55, 255, i * 10 + 128), 1));
+  }
+  blur(s, Math.floor(sp.ix / (8 - (sp.o1 ? 2 : 0))), sp.o1);
+});
+add(177, 'Frizzles@X frequency,Y frequency,Blur,,,Smear;;!;2', (s, t) => {
+  const sp = s.sp, W = s.W, H = s.H, p = curPal(s); fadeToBlackBy(s, 16 + (sp.o1 ? 10 : 0));
+  for (let i = 8; i > 0; i--) addXY(s, bs8(t, (sp.sx >> 3) + i, 0, W - 1), bs8(t, ((sp.ix >> 3) - i) & 0xFFFF, 0, H - 1), cfpal(p, bs8(t, 12, 0, 255), 255, 1));
+  blur(s, sp.c1 >> (3 + (sp.o1 ? 1 : 0)), sp.o1);
+});
+add(180, 'Hiphotic@X scale,Y scale,,,Speed;!;!;2', (s, t) => {
+  const sp = s.sp, a = Math.floor(t / ((sp.c3 >> 1) + 1));
+  for (let x = 0; x < s.W; x++) for (let y = 0; y < s.H; y++)
+    putXY(s, x, y, cfp(s, sin8w(cos8w(Math.floor(x * sp.sx / 16) + Math.floor(a / 3)) + sin8w(Math.floor(y * sp.ix / 16) + Math.floor(a / 4)) + a), false, 0));
+});
+add(176, 'Lissajous@X frequency,Fade rate,Blur,,Speed,Smear;!;!;2;c1=0', (s, t) => {
+  const sp = s.sp, W = s.W, H = s.H, phase = Math.floor(t * (1 + sp.c3) / 32); fadeToBlackBy(s, sp.ix);
+  for (let i = 0; i < 256; i++) {
+    let xl = sin8w(Math.floor(phase / 2) + Math.floor(i * sp.sx / 32)), yl = cos8w(Math.floor(phase / 2) + i * 2);
+    xl = W < 2 ? 1 : Math.floor((map(2 * xl, 0, 511, 0, 2 * (W - 1)) + 1) / 2); yl = H < 2 ? 1 : Math.floor((map(2 * yl, 0, 511, 0, 2 * (H - 1)) + 1) / 2);
+    putXY(s, xl & 255, yl & 255, cfp(s, Math.floor(t / 100) + i, false, 0));
+  }
+  blur(s, sp.c1 >> (1 + (sp.o1 ? 3 : 0)), sp.o1);
+});
+add(153, 'Matrix@!,Spawning rate,Trail,,,Custom color;Spawn,Trail;;2', (s, t) => {
+  const sp = s.sp, st = s.st, W = s.W, H = s.H;
+  if (!st.bits || st.bits.length !== W * H) { st.bits = new Uint8Array(W * H); fill(s, BLACK); st.step = 0; }
+  const fade = map(sp.c1, 0, 255, 30, 250), speed = ((256 - sp.sx) & 255) >> map(Math.min(H, 150), 0, 150, 0, 3);
+  const spawn = sp.o1 ? sp.col[0] : [ginv8(175), ginv8(255), ginv8(175), 0], trail = sp.o1 ? sp.col[1] : [ginv8(27), ginv8(130), ginv8(39), 0];
+  if (t - st.step < speed) return;
+  st.step = t; fadeToBlackBy(s, fade); let empty = true;
+  for (let row = H - 1; row >= 0; row--) for (let col = 0; col < W; col++) {
+    const k = row * W + col; if (!st.bits[k]) continue;
+    putXY(s, col, row, trail); st.bits[k] = 0;
+    if (row < H - 1) { putXY(s, col, row + 1, spawn); st.bits[k + W] = 1; empty = false; }
+  }
+  if (rnd(256) <= sp.ix || empty) { const x = rnd(Math.min(W, 255)); putXY(s, x, 0, spawn); st.bits[x] = 1; }
+});
+add(154, 'Metaballs@!;;!;2', (s, t) => {
+  const sp = s.sp, W = s.W, H = s.H, speed = 0.25 * (1 + (sp.sx >> 6)), ts = Math.floor(t * speed);
+  const x2 = map(perlin8_3(ts, 25355, 685), 0, 255, 0, W - 1), y2 = map(perlin8_3(ts, 355, 11685), 0, 255, 0, H - 1);
+  const x3 = map(perlin8_3(ts, 55355, 6685), 0, 255, 0, W - 1), y3 = map(perlin8_3(ts, 25355, 22685), 0, 255, 0, H - 1);
+  const x1 = bs8(t, Math.floor(23 * speed), 0, W - 1), y1 = bs8(t, Math.floor(28 * speed), 0, H - 1);
+  const base = Math.max(W, H) <= 32 ? 1000 : Math.max(W, H) <= 48 ? 1800 : 4800;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const d = (ax, ay) => sqrt32((x - ax) * (x - ax) + (y - ay) * (y - ay)), dist = 2 * d(x1, y1) + d(x2, y2) + d(x3, y3);
+    const col = dist ? Math.floor(base / dist) : 255;
+    putXY(s, x, y, col > 0 && col < 60 ? cfp(s, map(col * 9, 9, 531, 0, 255), false, 0) : cfp(s, 0, false, 0));
+  }
+  putXY(s, x1, y1, WHITE); putXY(s, x2, y2, WHITE); putXY(s, x3, y3, WHITE);
+});
+add(146, 'Noise2D@!,Scale;;!;2', (s, t) => {
+  const sp = s.sp, scale = sp.ix + 2, p = curPal(s), z = Math.floor(t / (16 - Math.floor(sp.sx / 16)));
+  for (let y = 0; y < s.H; y++) for (let x = 0; x < s.W; x++) putXY(s, x, y, cfpal(p, perlin8_3(x * scale, y * scale, z), 255, 1));
+});
+add(126, 'Octopus@!,,Offset X,Offset Y,Legs,fasttan;;!;2;', (s, t) => {
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, p = curPal(s);
+  if (!st.ang || st.aux0 !== W || st.aux1 !== H || st.ox !== sp.c1 || st.oy !== sp.c2) {
+    Object.assign(st, { step: 0, aux0: W, aux1: H, ox: sp.c1, oy: sp.c2, ang: new Uint8Array(W * H), rad: new Uint8Array(W * H) });
+    const mapp = Math.floor(180 / Math.max(W, H)), cx = (W >> 1) + Math.trunc((sp.c1 - 128) * W / 255), cy = (H >> 1) + Math.trunc((sp.c2 - 128) * H / 255);
+    for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) { const dx = x - cx, dy = y - cy, k = y * W + x;
+      st.ang[k] = Math.trunc(40.7436 * atan2t(dy, dx)) & 255; st.rad[k] = Math.trunc(Math.sqrt(dx * dx + dy * dy) * mapp) & 255; }
+  }
+  st.step = (st.step + (sp.sx >> 5) + 1) >>> 0;
+  for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
+    const k = y * W + x, a = st.ang[k], r = st.rad[k];
+    const v = sin8w(sin8w(Math.trunc((a * 4 - r) / 4) + Math.floor(st.step / 2)) + r - st.step + a * ((sp.c3 >> 2) + 1));
+    putXY(s, x, y, cfpal(p, Math.floor(st.step / 2) - r, v, 1));
+  }
+});
+add(178, 'Plasma Ball@Speed,,Fade,Blur;;!;2', (s, t) => {
+  const sp = s.sp, W = s.W, H = Math.min(s.H, 256), p = curPal(s); let ni = 30; const minDim = Math.min(W, H);
+  if (minDim > 28) ni = Math.max(5, Math.min(32, Math.floor((30 * 28 + 15) / minDim)));
+  fadeToBlackBy(s, sp.c1 >> 2); const tt = Math.floor(t * 8 / (256 - sp.sx)), b8 = beat8(5, t), nb = [];
+  for (let j = 0; j < H; j++) nb[j] = perlin8_3(tt, j * ni, tt);
+  for (let i = 0; i < W; i++) {
+    const cn = perlin8_3(i * ni, tt, tt), yShift = map(cn, 0, 255, 0, H - 1);
+    for (let j = 0; j < H; j++) { const dx = i + map(nb[j], 0, 255, 0, W - 1) - W, dy = j + yShift - H;
+      if (Math.abs(dx - dy) < 2 || Math.abs(dx + dy + 1) < 2 || dx === 0 || dx === -1 || dy === 0 || dy === -1) addXY(s, i, j, cfpal(p, b8, cn, 1)); }
+  }
+  blur(s, sp.c2 >> 5, false);
+});
+add(162, 'Pulser@!,Blur;;!;2', (s, t) => {
+  const sp = s.sp, W = s.W, H = s.H; fadeToBlackBy(s, 8 - (sp.ix >> 5));
+  const a = Math.floor(t / (18 - Math.floor(sp.sx / 16))), x = Math.floor(a / 14) % W;
+  const y = H < 2 ? 0 : map(sin8w(a * 5) + sin8w(a * 4) + sin8w(a * 2), 0, 765, H - 1, 0);
+  putXY(s, x, y, cfpal(curPal(s), H < 2 ? 0 : map(y, 0, H - 1, 0, 255), 255, 1)); blur(s, sp.ix >> 4, false);
+});
+add(181, 'Sindots@!,Dot distance,Fade rate,Blur,,Smear;;!;2;', (s, t) => {
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, p = curPal(s); if (!st.run) { fill(s, BLACK); st.run = true; }
+  fadeToBlackBy(s, (sp.c1 >> 3) + (sp.o1 ? 24 : 0));
+  const t1 = Math.floor(t / (257 - sp.sx)) & 255, t2 = (Math.floor(sin8w(t1) / 4) * 2) & 255;
+  for (let i = 0; i < 13; i++) putXY(s, Math.floor(sin8w(t1 + i * Math.floor(sp.ix / 8)) * (W - 1) / 255), Math.floor(sin8w(t2 + i * Math.floor(sp.ix / 8)) * (H - 1) / 255), cfpal(p, Math.floor(i * 255 / 13), 255, 1));
+  blur(s, sp.c2 >> (3 + (sp.o1 ? 1 : 0)), sp.o1);
+});
+add(150, 'Squared Swirl@,Fade,,,Blur;;!;2', (s, t) => {
+  const sp = s.sp, W = s.W, H = s.H, p = curPal(s); fadeToBlackBy(s, 1 + Math.floor(sp.ix / 5)); blur(s, sp.c3 >> 1, false);
+  addXY(s, bs8(t, 19, 2, W - 2), bs8(t, 18, 2, H - 2), cfpal(p, Math.floor(t / 29), 255, 1));
+  addXY(s, bs8(t, 22, 2, W - 2), bs8(t, 15, 2, H - 2), cfpal(p, Math.floor(t / 41), 255, 1));
+  addXY(s, bs8(t, 17, 2, W - 2), bs8(t, 20, 2, H - 2), cfpal(p, Math.floor(t / 73), 255, 1));
+});
+add(173, 'Tartan@X scale,Y scale,,,Sharpness;;!;2', (s, t) => {
+  const sp = s.sp, st = s.st, p = curPal(s); if (!st.run) { fill(s, BLACK); st.run = true; }
+  const offX = beatsin16(3, -360, 360, t), offY = beatsin16(2, -360, 360, t), sharp = sp.c3 >> 3, hs = beatsin16(10, 1, 10, t);
+  const shape = b => { let v = b; for (let i = 0; i < sharp; i++) v *= b; return Math.floor(v / Math.pow(2, 8 * sharp)); };
+  for (let x = 0; x < s.W; x++) for (let y = 0; y < s.H; y++) {
+    putXY(s, x, y, cfpal(p, x * hs + offY, shape(sin8w(Math.floor(x * sp.sx / 2) + offX)), 1));
+    addXY(s, x, y, cfpal(p, y * 3 + offX, shape(sin8w(Math.floor(y * sp.ix / 2) + offY)), 1));
+  }
+});
+add(127, 'Waving Cell@!,Blur,Amplitude 1,Amplitude 2,Amplitude 3,,Flow;;!;2;ix=0', (s, t) => {
+  const sp = s.sp, p = curPal(s), tt = Math.floor(t * (sp.sx + 1) / 8) >>> 0, aX = (sp.c1 >> 4) + 9, aY = (sp.c2 >> 4) + 1, aZ = sp.c3 + 1;
+  for (let x = 0; x < s.W; x++) for (let y = 0; y < s.H; y++) {
+    const wave = sin8w(x * aX + sin8w(Math.imul(((y << 8) + tt) >>> 0, aY) >>> 8)) + cos8w(y * aZ);
+    putXY(s, x, y, cfpal(p, wave + (tt >>> (8 - (sp.o2 ? 3 : 0))), 255, 1));
+  }
+  blur(s, sp.ix, false);
+});
+
 /* ================= metadata (same format as WLED) ================= */
 function parseMeta(meta) {
   const at = meta.indexOf('@'), name = at < 0 ? meta : meta.slice(0, at);
@@ -687,13 +899,14 @@ function parseMeta(meta) {
   keys.forEach((k, i) => { const p = params[i]; if (p) info.ctl.push({ k, l: p === '!' ? defL[k] : p }); });
   if (parts[1] !== undefined) { const cs = parts[1].split(','); info.colors = [0, 1, 2].map(i => !cs[i] ? null : cs[i] === '!' ? ['Fx', 'Bg', 'Cs'][i] : cs[i]); }
   if (parts[2] !== undefined) info.pal = parts[2] !== '';
+  info.flags = parts[3] || ''; info.only2D = info.flags.includes('2') && !info.flags.includes('1');
   (parts[4] || '').split(',').forEach(d => { const m = d.match(/^(sx|ix|c1|c2|c3|o1|o2|o3|pal)=(\d+)$/); if (m) info.def[m[1]] = +m[2]; });
   return info;
 }
 
 /* ================= model ================= */
 const SEGC = ['#ffb547', '#5ec8ff', '#b296ff', '#6be38a', '#ff8a9a', '#f2e05c', '#55e0d0', '#ff9f5e'];
-const strip = { count: 300, rgbw: false, bri: 160, perRow: 0, gamma: true };
+const strip = { count: 300, rgbw: false, bri: 160, perRow: 0, gamma: true, m2d: false, w: 16, h: 16 };   // m2d: 2D matrix of w × h
 let segs = [];
 const runtime = new WeakMap();
 
@@ -702,17 +915,41 @@ function applyDefaults(s) {
   const d = FX[s.fx].info.def; for (const k in d) { if (k === 'pal') s.pal = d[k]; else s[k] = k[0] === 'o' ? !!d[k] : d[k]; }
 }
 function newSeg(start, stop, fx = 85, opts = {}) {
-  const s = { id: 0, start, stop, on: true, bri: 255, fx, pal: 0, rev: false, col: [[255, 170, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
+  const s = { id: 0, start, stop, y0: 0, y1: 1, m12: 0, on: true, bri: 255, fx, pal: 0, rev: false, col: [[255, 170, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
   applyDefaults(s); Object.assign(s, opts);
   if (opts.col) s.col = [0, 1, 2].map(i => { const c = opts.col[i] || [0, 0, 0, 0]; return [c[0] | 0, c[1] | 0, c[2] | 0, c[3] | 0]; });
   return s;
 }
 function renumber() { segs.forEach((s, i) => { s.id = i; }); }
+// length of a 1D effect on a 2D segment (Segment::virtualLength with map1D2D)
+function vLen(m12, W, H) { return m12 === 1 ? H : m12 === 2 ? (sqrt32((H * H + W * W) << 2) + 1) >> 1 : m12 === 3 ? Math.max(W, H) : W * H; }
+// which cells of the W × H segment each pixel of a 1D effect lights (Segment::setPixelColor for 1D on 2D)
+function map1D2D(m12, W, H, L) {
+  if (m12 === 0) return null;                                       // Pixels: the matrix is one long strip
+  const out = [], inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
+  for (let i = 0; i < L; i++) {
+    const cells = [], at = (x, y) => { if (inside(x, y)) cells.push(y * W + x); };
+    if (m12 === 1) for (let x = 0; x < W; x++) at(x, H - i - 1);     // Bar: rows from the bottom
+    else if (m12 === 2) {                                            // Arc: quarter circles from the top left corner
+      if (i === 0) at(0, 0); else if (i === 2) at(1, 1); else if (i === L - 1) at(W - 1, H - 1);
+      let x = 0, y = i, d = -(i >> 1);
+      while (x <= y) { if (i !== x || i !== y) { if (y < H && x < W) at(x, y); if (y < W && x < H) at(y, x); } if (d <= 0) d += ++x; else d -= --y; }
+    } else { for (let x = 0; x <= i; x++) at(x, i); for (let y = 0; y < i; y++) at(i, y); }   // Corner
+    out.push(cells);
+  }
+  return out;
+}
 function rtFor(s) {
-  const fx = FX[s.fx], shape = s.fx + '|' + s.start + '|' + s.stop + '|' + s.rev + '|' + s.on;
+  const fx = FX[s.fx], m2d = strip.m2d, W = Math.max(0, s.stop - s.start), H = m2d ? Math.max(1, s.y1 - s.y0) : 1, d2 = m2d && fx.info.only2D;
+  const shape = [s.fx, s.start, s.stop, s.rev, s.on, m2d, s.y0, s.y1, s.m12].join('|');
   const sig = fx.once ? JSON.stringify([s.sx, s.ix, s.c1, s.c2, s.c3, s.o1, s.o2, s.o3, s.col, s.pal]) : '';
   let r = runtime.get(s);
-  if (!r || r.shape !== shape || r.sig !== sig) { const L = Math.max(0, s.stop - s.start); r = { shape, sig, L, px: new Float32Array(L * 4), st: {}, t: 0, acc: 24, sp: s }; runtime.set(s, r); }
+  if (!r || r.shape !== shape || r.sig !== sig) {
+    const L = !m2d ? W : d2 ? W * H : vLen(s.m12, W, H);
+    r = { shape, sig, L, W: d2 ? W : L, H: d2 ? H : 1, SW: W, SH: H, d2, map: m2d && !d2 ? map1D2D(s.m12, W, H, L) : null,
+          fallback: !m2d && fx.info.only2D, px: new Float32Array(L * 4), st: {}, t: 0, acc: 24, sp: s };
+    runtime.set(s, r);
+  }
   return r;
 }
 function restart(s) { runtime.delete(s); }
@@ -731,11 +968,17 @@ const EX = {
   theater: { count: 150, rgbw: true, bri: 180, segs: [[13, 0, 150, { sx: 160, ix: 0, col: [[255, 160, 60, 0], [0, 0, 0, 0]] }]] },
   waves: { count: 300, rgbw: false, bri: 170, segs: [[63, 0, 150, {}], [67, 150, 300, { pal: 26 }]] },
   builtin: { count: 300, rgbw: true, bri: 150, segs: [[85, 0, 100, { sx: 196, ix: 128, col: [[251, 255, 242, 0]] }], [102, 100, 200, { col: [[255, 120, 20, 0]] }], [9, 200, 300, {}]] },
+  m_hole: { m2d: true, w: 16, h: 16, rgbw: false, bri: 170, segs: [[183, 0, 16, {}]] },
+  m_rain: { m2d: true, w: 32, h: 16, rgbw: false, bri: 170, segs: [[153, 0, 32, { sx: 200, ix: 140 }]] },
+  m_mix: { m2d: true, w: 32, h: 16, rgbw: false, bri: 170, segs: [[126, 0, 16, { pal: 6 }], [178, 16, 32, { sx: 200, pal: 9 }]] },
+  m_fire: { m2d: true, w: 16, h: 16, rgbw: false, bri: 190, segs: [[66, 0, 16, { pal: 35, m12: 1 }]] },
+  m_noise: { m2d: true, w: 32, h: 16, rgbw: false, bri: 170, segs: [[146, 0, 32, { pal: 9, ix: 60 }]] },
 };
 function loadExample(k) {
   const e = EX[k]; if (!e) return;
-  Object.assign(strip, { count: e.count, rgbw: e.rgbw, bri: e.bri });
-  segs = e.segs.map(([fx, a, b, o]) => newSeg(a, b, fx, o)); renumber(); renderAll();
+  const m2d = !!e.m2d;
+  Object.assign(strip, { m2d, rgbw: e.rgbw, bri: e.bri }, m2d ? { w: e.w, h: e.h, count: e.w * e.h } : { count: e.count });
+  segs = e.segs.map(([fx, a, b, o]) => newSeg(a, b, fx, Object.assign(m2d ? { y0: 0, y1: e.h } : {}, o))); renumber(); renderAll();
 }
 
 /* ================= stage ================= */
@@ -744,6 +987,14 @@ const gA = document.createElement('canvas'), gActx = gA.getContext('2d'), gB = d
 let geo = null;
 function layout() {
   const dpr = Math.min(2, window.devicePixelRatio || 1), W = box.clientWidth || 600, pad = 16, avail = W - pad * 2, n = strip.count;
+  if (strip.m2d) {                                     // matrix: one row per LED row, a label band on top
+    const cols = strip.w, rows = strip.h, top = 18, maxH = Math.max(160, window.innerHeight * 0.44 - pad * 2 - top);
+    const pitch = Math.max(3, Math.min(26, avail / cols, maxH / rows)), H = Math.round(pad * 2 + top + rows * pitch), offX = pad + (avail - cols * pitch) / 2;
+    cv.style.height = H + 'px'; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const fa = Math.max(2, Math.round(pitch * dpr * 0.6)), fb = fa * 3;
+    gA.width = Math.ceil(cv.width / fa); gA.height = Math.ceil(cv.height / fa); gB.width = Math.ceil(cv.width / fb); gB.height = Math.ceil(cv.height / fb);
+    geo = { dpr, W, H, pad, perRow: cols, pitch, rows, band: 0, rowH: pitch, top, offX, fa, fb, m2d: true }; return;
+  }
   let perRow = strip.perRow > 0 ? Math.min(strip.perRow, n) : Math.min(n, Math.max(8, Math.floor(avail / 9)));
   let pitch = Math.min(18, avail / perRow);
   const rows = Math.ceil(n / perRow), band = 16, rowH = band + pitch + 12, H = pad * 2 + rows * rowH - 12;
@@ -751,18 +1002,25 @@ function layout() {
   cv.style.height = H + 'px'; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   const fa = Math.max(2, Math.round(pitch * dpr * 0.6)), fb = fa * 3;
   gA.width = Math.ceil(cv.width / fa); gA.height = Math.ceil(cv.height / fa); gB.width = Math.ceil(cv.width / fb); gB.height = Math.ceil(cv.height / fb);
-  geo = { dpr, W, H, pad, perRow, pitch, rows, band, rowH, offX, fa, fb };
+  geo = { dpr, W, H, pad, perRow, pitch, rows, band, rowH, top: 0, offX, fa, fb, m2d: false };
 }
 const ledX = i => geo.offX + ((i % geo.perRow) + 0.5) * geo.pitch;
-const ledY = i => geo.pad + Math.floor(i / geo.perRow) * geo.rowH + geo.band + geo.pitch / 2;
+const ledY = i => geo.pad + geo.top + Math.floor(i / geo.perRow) * geo.rowH + geo.band + geo.pitch / 2;
 
-const N = () => strip.count;
+const N = () => strip.m2d ? strip.w * strip.h : strip.count;
 let frame = new Float32Array(0), lin = new Float32Array(0), css = [];
 function compose() {
   const n = N(); if (frame.length !== n * 4) { frame = new Float32Array(n * 4); lin = new Float32Array(n * 3); css = new Array(n); }
   frame.fill(0);
   for (const s of segs) {
     if (!s.on || s.stop <= s.start) continue; const r = rtFor(s), k = s.bri / 255;
+    if (strip.m2d) {                                   // 2D: copy the segment rectangle into the matrix
+      const W = r.SW, put2 = (x, y, o) => { if (s.rev) x = W - 1 - x; const gx = s.start + x, gy = s.y0 + y; if (gx < 0 || gy < 0 || gx >= strip.w || gy >= strip.h) return;
+        const q = (gy * strip.w + gx) * 4; frame[q] = r.px[o] * k; frame[q + 1] = r.px[o + 1] * k; frame[q + 2] = r.px[o + 2] * k; frame[q + 3] = strip.rgbw ? r.px[o + 3] * k : 0; };
+      if (r.d2 || !r.map) { for (let i = 0; i < r.L; i++) put2(i % W, Math.floor(i / W), i * 4); }
+      else for (let i = 0; i < r.L; i++) for (const c of r.map[i]) put2(c % W, Math.floor(c / W), i * 4);
+      continue;
+    }
     for (let i = 0; i < r.L; i++) { const idx = s.start + (s.rev ? r.L - 1 - i : i); if (idx >= n) continue; const o = i * 4, q = idx * 4;
       frame[q] = r.px[o] * k; frame[q + 1] = r.px[o + 1] * k; frame[q + 2] = r.px[o + 2] * k; frame[q + 3] = strip.rgbw ? r.px[o + 3] * k : 0; }
   }
@@ -781,7 +1039,15 @@ function draw() {
   ctx.setTransform(d, 0, 0, d, 0, 0);
   // segment bands
   ctx.font = '600 10.5px "JetBrains Mono", ui-monospace, monospace'; ctx.textBaseline = 'middle';
-  segs.forEach((s, si) => {
+  if (g.m2d) segs.forEach((s, si) => {
+    const x1 = Math.min(s.stop, strip.w), y1 = Math.min(s.y1, strip.h); if (x1 <= s.start || y1 <= s.y0) return;
+    const col = SEGC[si % SEGC.length], x = g.offX + s.start * g.pitch, y = g.pad + g.top + s.y0 * g.pitch, w = (x1 - s.start) * g.pitch, h = (y1 - s.y0) * g.pitch;
+    ctx.globalAlpha = s.on ? 0.95 : 0.35; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.5; ctx.strokeRect(x + 0.75, y + 0.75, w - 1.5, h - 1.5);
+    if (w > 40) { const ly = s.y0 === 0 ? g.pad + g.top - 9 : y + 9; ctx.save(); ctx.beginPath(); ctx.rect(x, ly - 7, w, 14); ctx.clip();
+      if (s.y0 !== 0) { ctx.fillStyle = 'rgba(5,7,11,.8)'; ctx.fillRect(x + 2, ly - 7, Math.min(w - 4, ctx.measureText(s.id + ' · ' + FX[s.fx].info.name).width + 8), 14); ctx.fillStyle = col; }
+      ctx.fillText(s.id + ' · ' + FX[s.fx].info.name, x + 5, ly); ctx.restore(); }
+  });
+  else segs.forEach((s, si) => {
     if (s.stop <= s.start) return; const col = SEGC[si % SEGC.length], a = Math.max(0, s.start), b = Math.min(n, s.stop); if (b <= a) return;
     ctx.globalAlpha = s.on ? 0.95 : 0.35; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2;
     let best = null;   // the name goes on the widest piece, so a segment that wraps after a few LEDs keeps its label
@@ -818,7 +1084,8 @@ let last = performance.now();
 function tick(now) {
   const dt = Math.min(100, now - last); last = now;
   for (const s of segs) { if (!s.on || s.stop <= s.start) continue; const r = rtFor(s); r.acc += dt; let n = 0;
-    while (r.acc >= 24 && n < 5) { FX[s.fx].f(r, r.t); r.t += 24; r.acc -= 24; n++; } if (n >= 5) r.acc = 0; }
+    const f = r.fallback ? (x => fill(x, x.sp.col[0])) : FX[s.fx].f;
+    while (r.acc >= 24 && n < 5) { f(r, r.t); r.t += 24; r.acc -= 24; n++; } if (n >= 5) r.acc = 0; }
   compose(); draw(); requestAnimationFrame(tick);
 }
 
@@ -830,7 +1097,8 @@ function el(tag, attrs = {}, kids = []) { const e = document.createElement(tag);
 
 function fxOptions(sel, cur) {
   const sorted = Object.keys(FX).sort((a, b) => FX[a].info.name.localeCompare(FX[b].info.name));
-  for (const k of sorted) { const f = FX[k]; const o = el('option', { value: String(k), text: f.info.name + (f.approx ? ' (≈)' : '') + ' · ' + k }); if (String(k) === String(cur)) o.selected = true; sel.appendChild(o); }
+  for (const k of sorted) { const f = FX[k]; if (f.info.only2D && !strip.m2d && String(k) !== String(cur)) continue;
+    const o = el('option', { value: String(k), text: f.info.name + (f.approx ? ' (≈)' : '') + (f.info.only2D ? ' (2D)' : '') + ' · ' + k }); if (String(k) === String(cur)) o.selected = true; sel.appendChild(o); }
 }
 const fxKey = v => (/^\d+$/.test(v) ? +v : v);
 
@@ -849,18 +1117,27 @@ function segCard(s, si) {
   const onBox = el('input', { type: 'checkbox', id: 'on-' + si }); onBox.checked = s.on; onBox.addEventListener('change', () => { s.on = onBox.checked; card.classList.toggle('off', !s.on); updateOut(); drawMeta(); });
   const del = el('button', { class: 'btn small ghost', type: 'button', text: t('remove') }); del.addEventListener('click', () => { segs.splice(si, 1); renumber(); renderAll(); });
   const rep = el('button', { class: 'btn small', type: 'button', text: t('replay') }); rep.addEventListener('click', () => restart(s));
-  const head = el('div', { class: 'seg-head' }, [el('span', { class: 'seg-title', text: 'Segment ' + s.id }), el('span', { class: 'seg-range', text: s.start + '–' + s.stop + ' · ' + Math.max(0, s.stop - s.start) + ' ' + t('ledsShort') }), el('span', { class: 'grow' }), sel,
+  const head = el('div', { class: 'seg-head' }, [el('span', { class: 'seg-title', text: 'Segment ' + s.id }), el('span', { class: 'seg-range', text: strip.m2d ? (s.stop - s.start) + ' × ' + (s.y1 - s.y0) : s.start + '–' + s.stop + ' · ' + Math.max(0, s.stop - s.start) + ' ' + t('ledsShort') }), el('span', { class: 'grow' }), sel,
     el('label', { class: 'check' }, [onBox, el('span', { text: t('on') })]), rep, del]);
   card.appendChild(head);
 
-  const num = (key, min) => { const inp = el('input', { type: 'number', id: key + '-' + si, min: String(min), max: String(strip.count), step: '1' }); inp.value = s[key];
-    inp.addEventListener('change', () => { let v = Math.round(+inp.value); if (!isFinite(v)) v = s[key]; v = Math.max(0, Math.min(strip.count, v));
-      if (key === 'start' && v >= s.stop) v = s.stop - 1; if (key === 'stop' && v <= s.start) v = s.start + 1; s[key] = v; renderAll(); });
-    return el('div', { class: 'field' }, [el('span', { class: 'lbl', text: t(key) }), inp]); };
+  const pairs = { start: 'stop', stop: 'start', y0: 'y1', y1: 'y0' };
+  const num = (key, min, max, label) => { const inp = el('input', { type: 'number', id: key + '-' + si, min: String(min), max: String(max), step: '1' }); inp.value = s[key];
+    inp.addEventListener('change', () => { let v = Math.round(+inp.value); if (!isFinite(v)) v = s[key]; v = Math.max(0, Math.min(max, v)); const o = pairs[key];
+      if ((key === 'start' || key === 'y0') && v >= s[o]) v = s[o] - 1; if ((key === 'stop' || key === 'y1') && v <= s[o]) v = s[o] + 1; s[key] = v; renderAll(); });
+    return el('div', { class: 'field' }, [el('span', { class: 'lbl', text: label }), inp]); };
   const rev = el('input', { type: 'checkbox', id: 'rev-' + si }); rev.checked = s.rev; rev.addEventListener('change', () => { s.rev = rev.checked; updateOut(); });
-  const geom = el('div', { class: 'row' }, [num('start', 0), num('stop', 1), el('label', { class: 'check', style: 'margin-top:16px' }, [rev, el('span', { text: t('reverse') })])]);
+  const revBox = el('label', { class: 'check', style: 'margin-top:16px' }, [rev, el('span', { text: t('reverse') })]);
+  const geom = strip.m2d
+    ? el('div', { class: 'row' }, [num('start', 0, strip.w, t('startX')), num('stop', 1, strip.w, t('stopX')), num('y0', 0, strip.h, t('startY')), num('y1', 1, strip.h, t('stopY')), revBox])
+    : el('div', { class: 'row' }, [num('start', 0, strip.count, t('start')), num('stop', 1, strip.count, t('stop')), revBox]);
   card.appendChild(geom);
-  const over = segs.findIndex((o, j) => j !== si && o.start < s.stop && s.start < o.stop);
+  if (strip.m2d && !info.only2D) {                    // how a 1D effect fills the rectangle (WLED: "Expand 1D FX")
+    const ms = el('select', { id: 'm12-' + si, 'aria-label': t('m12') }); t('m12n').forEach((nm, v) => { const o = el('option', { value: String(v), text: nm }); if (v === s.m12) o.selected = true; ms.appendChild(o); });
+    ms.addEventListener('change', () => { s.m12 = +ms.value; updateOut(); });
+    card.appendChild(el('div', { class: 'row' }, [el('div', { class: 'field' }, [el('span', { class: 'lbl', text: t('m12') }), ms])]));
+  }
+  const over = segs.findIndex((o, j) => j !== si && o.start < s.stop && s.start < o.stop && (!strip.m2d || (o.y0 < s.y1 && s.y0 < o.y1)));
   if (over >= 0) card.appendChild(el('p', { class: 'warn', text: t('overlap', { n: over }) }));
 
   const g2 = el('div', { class: 'grid2' });
@@ -892,13 +1169,14 @@ function renderSegs() {
   if (!segs.length) host.appendChild(el('p', { class: 'empty', text: t('noSegs') }));
   segs.forEach((s, i) => host.appendChild(segCard(s, i)));
 }
-function drawMeta() { $('meta').innerHTML = ''; $('meta').appendChild(el('span', { text: t('meta', { c: strip.count, s: segs.length, r: geo ? geo.rows : 1 }) })); }
+function drawMeta() { $('meta').innerHTML = ''; $('meta').appendChild(el('span', { text: strip.m2d ? t('metaM', { w: strip.w, h: strip.h, c: strip.w * strip.h, s: segs.length }) : t('meta', { c: strip.count, s: segs.length, r: geo ? geo.rows : 1 }) })); }
 
 function segJson(s) {
   const o = { id: s.id, start: s.start, stop: s.stop, on: s.on, bri: s.bri, fx: s.fx, sx: s.sx, ix: s.ix };
   const ctl = FX[s.fx].info.ctl.map(c => c.k);
   for (const k of ['c1', 'c2', 'c3']) if (ctl.includes(k)) o[k] = s[k];
   for (const k of ['o1', 'o2', 'o3']) if (ctl.includes(k)) o[k] = !!s[k];
+  if (strip.m2d) { o.startY = s.y0; o.stopY = s.y1; if (!FX[s.fx].info.only2D) o.m12 = s.m12; }
   o.pal = s.pal; o.col = s.col.map(c => strip.rgbw ? [c[0], c[1], c[2], c[3] | 0] : [c[0], c[1], c[2]]); o.rev = s.rev;
   return o;
 }
@@ -911,6 +1189,8 @@ function updateOut() {
 
 function renderStrip() {
   $('count').value = strip.count; $('rgbw').value = strip.rgbw ? '1' : '0'; $('perRow').value = strip.perRow; $('bri').value = strip.bri; $('briOut').textContent = strip.bri; $('gamma').checked = strip.gamma;
+  $('mode').value = strip.m2d ? '1' : '0'; $('mw').value = strip.w; $('mh').value = strip.h;
+  $('f-count').hidden = $('f-perRow').hidden = strip.m2d; $('f-mw').hidden = $('f-mh').hidden = !strip.m2d; $('m2dHint').hidden = !strip.m2d;
 }
 function renderAll() { renderStrip(); layout(); renderSegs(); updateOut(); drawMeta(); }
 
@@ -938,7 +1218,11 @@ function doImport() {
   if (!raw.length) { msg.textContent = t('noSegIn'); msg.className = 'msg err'; return; }
   const unknown = [], unknownPal = [];
   if (typeof st.bri === 'number') strip.bri = st.bri;
-  strip.count = (info.leds && info.leds.count) || Math.max(...raw.map(x => x.stop));
+  const mx = info.leds && info.leds.matrix, is2D = !!mx || raw.some(x => typeof x.startY === 'number' || typeof x.stopY === 'number');
+  strip.m2d = is2D;
+  if (is2D) { strip.w = clampInt((mx && mx.w) || Math.max(...raw.map(x => x.stop)), 1, 128); strip.h = clampInt((mx && mx.h) || Math.max(...raw.map(x => x.stopY ?? 1)), 1, 128);
+    if (strip.w * strip.h > 4096) strip.h = Math.max(1, Math.floor(4096 / strip.w)); }
+  strip.count = is2D ? strip.w * strip.h : Math.min(1500, (info.leds && info.leds.count) || Math.max(...raw.map(x => x.stop)));
   if (info.leds && typeof info.leds.rgbw === 'boolean') strip.rgbw = info.leds.rgbw; else strip.rgbw = raw.some(x => (x.col || []).some(c => Array.isArray(c) && c.length > 3 && c[3] > 0));
   segs = raw.map(x => {
     let fx = x.fx ?? 0;
@@ -949,6 +1233,9 @@ function doImport() {
     for (const k of ['o1', 'o2', 'o3', 'on', 'rev']) if (typeof x[k] === 'boolean') s[k] = x[k];
     if (Array.isArray(x.col)) s.col = [0, 1, 2].map(i => x.col[i] !== undefined ? parseCol(x.col[i]) : [0, 0, 0, 0]);
     if (!PAL_IDS.includes(s.pal)) { unknownPal.push(s.pal); s.pal = 0; }
+    if (is2D) { s.start = Math.min(s.start, strip.w - 1); s.stop = Math.max(s.start + 1, Math.min(s.stop, strip.w)); s.y0 = clampInt(x.startY ?? 0, 0, strip.h - 1);
+      s.y1 = clampInt(x.stopY ?? strip.h, s.y0 + 1, strip.h); s.m12 = x.m12 >= 0 && x.m12 <= 3 ? x.m12 | 0 : 0; }
+    else if (FX[s.fx].info.only2D) { unknown.push(s.fx + ' (2D)'); s.fx = 0; }
     return s;
   });
   renumber(); renderAll();
@@ -960,16 +1247,24 @@ function doImport() {
 $('count').addEventListener('change', () => { strip.count = Math.max(1, Math.min(1500, Math.round(+$('count').value) || 1));
   segs.forEach(s => { s.stop = Math.min(s.stop, strip.count); s.start = Math.min(s.start, s.stop - 1); }); segs = segs.filter(s => s.stop > s.start); renumber(); renderAll(); });
 $('rgbw').addEventListener('change', () => { strip.rgbw = $('rgbw').value === '1'; renderAll(); });
+$('mode').addEventListener('change', () => loadExample($('mode').value === '1' ? 'm_hole' : 'tour'));
+const resizeMatrix = () => { let w = clampInt($('mw').value, 1, 128), h = clampInt($('mh').value, 1, 128); if (w * h > 4096) h = Math.max(1, Math.floor(4096 / w));
+  Object.assign(strip, { w, h, count: w * h });
+  segs.forEach(x => { x.start = Math.min(x.start, w - 1); x.stop = Math.max(x.start + 1, Math.min(x.stop, w)); x.y0 = Math.min(x.y0, h - 1); x.y1 = Math.max(x.y0 + 1, Math.min(x.y1, h)); });
+  renderAll(); };
+$('mw').addEventListener('change', resizeMatrix); $('mh').addEventListener('change', resizeMatrix);
 $('perRow').addEventListener('change', () => { strip.perRow = Math.max(0, Math.round(+$('perRow').value) || 0); layout(); drawMeta(); saveHash(); });
 $('bri').addEventListener('input', () => { strip.bri = +$('bri').value; $('briOut').textContent = strip.bri; updateOut(); });
 $('gamma').addEventListener('change', () => { strip.gamma = $('gamma').checked; saveHash(); });
 $('examples').addEventListener('change', () => { if ($('examples').value) loadExample($('examples').value); $('examples').value = ''; });
 $('splitBtn').addEventListener('click', () => {
-  const n = Math.max(1, Math.min(32, Math.round(+$('splitN').value) || 1)), keep = segs.slice(); segs = [];
-  for (let i = 0; i < n; i++) { const a = Math.floor(i * strip.count / n), b = Math.floor((i + 1) * strip.count / n); if (b <= a) continue;
-    const src = keep[i]; segs.push(src ? Object.assign(newSeg(a, b, src.fx), { sx: src.sx, ix: src.ix, c1: src.c1, c2: src.c2, c3: src.c3, o1: src.o1, o2: src.o2, o3: src.o3, pal: src.pal, col: src.col.map(c => c.slice()), bri: src.bri, rev: src.rev }) : newSeg(a, b, 85, { col: [[255, 170, 0, 0]] })); }
+  const n = Math.max(1, Math.min(32, Math.round(+$('splitN').value) || 1)), keep = segs.slice(), len = strip.m2d ? strip.w : strip.count; segs = [];
+  for (let i = 0; i < n; i++) { const a = Math.floor(i * len / n), b = Math.floor((i + 1) * len / n); if (b <= a) continue;
+    const src = keep[i]; if (strip.m2d) { const x = src ? newSeg(a, b, src.fx) : newSeg(a, b, 183); if (src) Object.assign(x, { sx: src.sx, ix: src.ix, c1: src.c1, c2: src.c2, c3: src.c3, o1: src.o1, o2: src.o2, o3: src.o3, pal: src.pal, col: src.col.map(c => c.slice()), bri: src.bri, rev: src.rev, m12: src.m12 }); x.y0 = 0; x.y1 = strip.h; segs.push(x); continue; }
+    segs.push(src ? Object.assign(newSeg(a, b, src.fx), { sx: src.sx, ix: src.ix, c1: src.c1, c2: src.c2, c3: src.c3, o1: src.o1, o2: src.o2, o3: src.o3, pal: src.pal, col: src.col.map(c => c.slice()), bri: src.bri, rev: src.rev }) : newSeg(a, b, 85, { col: [[255, 170, 0, 0]] })); }
   renumber(); renderAll(); });
 $('addSeg').addEventListener('click', () => {
+  if (strip.m2d) { segs.push(newSeg(0, strip.w, 183, { y0: 0, y1: strip.h })); renumber(); renderAll(); return; }
   const end = segs.reduce((m, s) => Math.max(m, s.stop), 0), a = end < strip.count ? end : Math.max(0, strip.count - Math.max(1, Math.floor(strip.count / 4)));
   segs.push(newSeg(a, strip.count, 85)); renumber(); renderAll(); });
 $('restart').addEventListener('click', () => segs.forEach(restart));
@@ -984,15 +1279,16 @@ $('lang').addEventListener('click', () => { lang = lang === 'de' ? 'en' : 'de'; 
 const hex2 = v => (Math.max(0, Math.min(255, Math.round(v) || 0))).toString(16).padStart(2, '0');
 const clampInt = (v, lo, hi) => { v = Math.round(+v); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : lo; };
 function encodeState() {
-  const o = [1, strip.count, strip.rgbw ? 1 : 0, strip.bri, strip.perRow, strip.gamma ? 1 : 0,
+  const o = [2, strip.count, strip.rgbw ? 1 : 0, strip.bri, strip.perRow, strip.gamma ? 1 : 0,
     segs.map(x => [x.fx, x.start, x.stop, x.on ? 1 : 0, x.bri, x.sx, x.ix, x.c1, x.c2, x.c3, (x.o1 ? 1 : 0) | (x.o2 ? 2 : 0) | (x.o3 ? 4 : 0), x.pal, x.rev ? 1 : 0,
-      x.col.map(c => hex2(c[0]) + hex2(c[1]) + hex2(c[2]) + hex2(c[3]))])];
+      x.col.map(c => hex2(c[0]) + hex2(c[1]) + hex2(c[2]) + hex2(c[3])), x.y0, x.y1, x.m12]), strip.m2d ? 1 : 0, strip.w, strip.h];
   return btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 function decodeState(str) {
   let o; try { o = JSON.parse(atob(str.replace(/-/g, '+').replace(/_/g, '/'))); } catch (e) { return false; }
-  if (!Array.isArray(o) || o[0] !== 1 || !Array.isArray(o[6])) return false;
-  const n = clampInt(o[1], 1, 1500), list = [];
+  if (!Array.isArray(o) || (o[0] !== 1 && o[0] !== 2) || !Array.isArray(o[6])) return false;
+  const m2d = o[0] === 2 && o[7] === 1, mw = clampInt(o[8], 1, 128), mh = Math.min(clampInt(o[9], 1, 128), Math.max(1, Math.floor(4096 / mw)));
+  const n = m2d ? mw : clampInt(o[1], 1, 1500), list = [];
   for (const a of o[6].slice(0, 32)) {
     if (!Array.isArray(a)) continue;
     const fx = FX[a[0]] ? a[0] : 0, start = clampInt(a[1], 0, n - 1), stop = clampInt(a[2], start + 1, n), x = newSeg(start, stop, fx);
@@ -1001,9 +1297,11 @@ function decodeState(str) {
     x.c3 = clampInt(a[9], 0, 31); const ob = clampInt(a[10], 0, 7); x.o1 = !!(ob & 1); x.o2 = !!(ob & 2); x.o3 = !!(ob & 4);
     x.pal = PAL_IDS.includes(a[11]) ? a[11] : 0; x.rev = a[12] === 1;
     if (Array.isArray(a[13])) x.col = [0, 1, 2].map(i => { const h = String(a[13][i] || ''); return /^[0-9a-f]{8}$/i.test(h) ? [0, 2, 4, 6].map(j => parseInt(h.slice(j, j + 2), 16)) : [0, 0, 0, 0]; });
+    if (m2d) { x.y0 = clampInt(a[14], 0, mh - 1); x.y1 = clampInt(a[15], x.y0 + 1, mh); x.m12 = clampInt(a[16], 0, 3); }
+    else if (FX[x.fx].info.only2D) { x.fx = 0; applyDefaults(x); }
     list.push(x);
   }
-  Object.assign(strip, { count: n, rgbw: !!o[2], bri: clampInt(o[3], 0, 255), perRow: clampInt(o[4], 0, 1500), gamma: o[5] !== 0 });
+  Object.assign(strip, { count: m2d ? mw * mh : n, rgbw: !!o[2], bri: clampInt(o[3], 0, 255), perRow: clampInt(o[4], 0, 1500), gamma: o[5] !== 0, m2d }, m2d ? { w: mw, h: mh } : {});
   segs = list; renumber(); renderAll(); return true;
 }
 let hashTimer = 0, lastHash = '';
