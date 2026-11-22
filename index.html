@@ -1,0 +1,983 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LED Strip Simulator for WLED</title>
+<meta name="description" content="Try WLED effects in the browser: split a strip into segments, give each an effect and copy the JSON to your WLED.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the strip sits sticky on top; below, segment cards on the left and strip settings + JSON on the right (from 980px) */
+:root{
+  --bg:#0a0d13;
+  --panel:#10151d;
+  --raise:#171d28;
+  --line:#252e3c;
+  --fg:#e8ebf1;
+  --muted:#8f98aa;
+  --accent:#ffb547;
+  --accent-ink:#1d1405;
+  --night:#05070b;
+  --warn:#ff8a7a;
+  --f-display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font-family:var(--f-body);font-size:15px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:1280px;margin:0 auto;padding-block:20px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 20px;margin-bottom:14px}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(26px,4vw,38px);line-height:1.05;margin:0;text-wrap:balance}
+h1 em{font-style:normal;color:var(--accent)}
+.sub{margin:4px 0 0;color:var(--muted);max-width:78ch}
+.top-actions{display:flex;gap:8px;align-items:center}
+a{color:var(--accent)}
+
+.stage{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-bottom:12px;box-shadow:0 10px 16px 2px var(--bg)}
+.stage-box{background:var(--night);border:1px solid var(--line);border-radius:14px;max-height:44vh;overflow:auto}
+.stage canvas{display:block;width:100%}
+.stage-meta{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:8px;font-family:var(--f-mono);font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stage-meta b{color:var(--fg);font-weight:500}
+
+.layout{display:grid;gap:16px}
+@media (min-width:980px){.layout{grid-template-columns:minmax(0,1fr) 360px;align-items:start}}
+.col{display:grid;gap:16px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px 16px;display:grid;gap:12px;min-width:0}
+h2{font-family:var(--f-display);font-weight:700;font-size:20px;margin:0;line-height:1.1}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.lbl{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.field{display:grid;gap:4px;min-width:0}
+.hint{margin:0;color:var(--muted);font-size:13px}
+
+input[type=number],select,textarea{font:inherit;color:var(--fg);background:var(--raise);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:0}
+input[type=number]{width:6.5em;font-family:var(--f-mono);font-size:13px}
+select{padding-right:26px}
+textarea{width:100%;min-height:110px;font-family:var(--f-mono);font-size:12px;resize:vertical}
+input[type=range]{width:100%;accent-color:var(--accent);min-width:0}
+input[type=color]{width:40px;height:30px;padding:0;border:1px solid var(--line);border-radius:6px;background:var(--raise)}
+input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+label.check{display:inline-flex;align-items:center;gap:7px;font-size:14px;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,pre:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{appearance:none;border:1px solid var(--line);background:var(--raise);color:var(--fg);font:500 13px/1 var(--f-body);padding:8px 12px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.small{padding:6px 9px;font-size:12px}
+.btn.ghost{background:transparent}
+
+.seg{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--segc,var(--accent));border-radius:12px;padding:12px 14px 14px;display:grid;gap:12px;min-width:0}
+.seg.off{opacity:.62}
+.seg-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.seg-title{font-family:var(--f-display);font-weight:700;font-size:18px;white-space:nowrap}
+.seg-range{font-family:var(--f-mono);font-size:11.5px;color:var(--muted)}
+.seg-head .grow{flex:1}
+.seg-head select{max-width:220px}
+.warn{color:var(--warn);font-size:12.5px}
+.grid2{display:grid;gap:10px 16px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.slider{display:grid;grid-template-columns:minmax(0,1fr) 3.2ch;gap:2px 10px;align-items:center}
+.slider .lbl{grid-column:1/-1;text-transform:none;letter-spacing:0;font-family:var(--f-body);font-size:13px;color:var(--fg)}
+.slider output{font-family:var(--f-mono);font-size:12px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.colors{display:flex;flex-wrap:wrap;gap:10px 18px}
+.color{display:flex;align-items:center;gap:8px;font-size:13px}
+.color input[type=number]{width:4.2em}
+.empty{color:var(--muted);margin:0}
+pre{margin:0;padding:10px 12px;background:var(--night);border:1px solid var(--line);border-radius:8px;font-family:var(--f-mono);font-size:11.5px;line-height:1.5;color:var(--fg);overflow:auto;max-height:320px;white-space:pre}
+.msg{font-size:13px;color:var(--muted);margin:0}
+.msg.err{color:var(--warn)}
+.foot{margin:22px 0 0;color:var(--muted);font-size:13px;max-width:95ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1 data-i18n-html="title"></h1>
+      <p class="sub" data-i18n="sub"></p>
+    </div>
+    <div class="top-actions">
+      <a class="btn ghost" href="https://github.com/djlex83/wled-strip-simulator">GitHub</a>
+      <button class="btn" id="lang" type="button"></button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="stage-box" id="stageBox"><canvas id="cv" role="img" aria-label="LED strip preview"></canvas></div>
+    <div class="stage-meta" id="meta"></div>
+  </div>
+
+  <div class="layout">
+    <div class="col">
+      <div class="row" style="justify-content:space-between">
+        <h2 data-i18n="segments"></h2>
+        <div class="row">
+          <button class="btn small" id="restart" type="button" data-i18n="restartAll"></button>
+          <button class="btn small primary" id="addSeg" type="button" data-i18n="addSeg"></button>
+        </div>
+      </div>
+      <div id="segs" class="col"></div>
+    </div>
+
+    <div class="col">
+      <section class="panel" aria-labelledby="h-strip">
+        <h2 id="h-strip" data-i18n="strip"></h2>
+        <div class="row">
+          <div class="field"><span class="lbl" data-i18n="leds"></span><input type="number" id="count" min="1" max="1500" step="1"></div>
+          <div class="field"><span class="lbl" data-i18n="type"></span>
+            <select id="rgbw"><option value="0">RGB</option><option value="1">RGBW</option></select></div>
+          <div class="field"><span class="lbl" data-i18n="perRow"></span><input type="number" id="perRow" min="0" max="1500" step="1"></div>
+        </div>
+        <div class="slider"><span class="lbl" data-i18n="brightness"></span><input type="range" id="bri" min="0" max="255"><output id="briOut"></output></div>
+        <label class="check"><input type="checkbox" id="gamma"> <span data-i18n="gamma"></span></label>
+        <div class="row">
+          <div class="field" style="flex:1"><span class="lbl" data-i18n="examples"></span><select id="examples"></select></div>
+        </div>
+        <div class="row" style="align-items:flex-end">
+          <div class="field"><span class="lbl" data-i18n="split"></span><input type="number" id="splitN" min="1" max="32" value="3"></div>
+          <button class="btn" id="splitBtn" type="button" data-i18n="splitBtn"></button>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-json">
+        <h2 id="h-json" data-i18n="json"></h2>
+        <p class="hint" data-i18n="exportHint"></p>
+        <pre id="out" tabindex="0"></pre>
+        <div class="row"><button class="btn small" id="copy" type="button" data-i18n="copy"></button><p class="msg" id="copyMsg" hidden></p></div>
+        <span class="lbl" data-i18n="import"></span>
+        <p class="hint" data-i18n="importHint"></p>
+        <textarea id="in" spellcheck="false" placeholder='{"bri":128,"seg":[{"id":0,"start":0,"stop":60,"fx":85,"col":[[255,170,0]]}]}'></textarea>
+        <div class="row"><button class="btn small" id="apply" type="button" data-i18n="apply"></button></div>
+        <p class="msg" id="inMsg" hidden></p>
+      </section>
+    </div>
+  </div>
+
+  <p class="foot" data-i18n="foot"></p>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= texts ================= */
+const T = {
+  en: {
+    title: 'LED Strip <em>Simulator</em>',
+    sub: 'For WLED: split a strip into segments, give each one a WLED effect and copy the JSON to your WLED. The effects calculate like in WLED 16, with gamma 2.8 on every pixel.',
+    segments: 'Segments', addSeg: 'Add segment', restartAll: 'Restart all', strip: 'Strip', leds: 'LEDs', type: 'Type',
+    perRow: 'LEDs per row', brightness: 'Brightness', gamma: 'Gamma correction 2.8 (WLED default)', examples: 'Examples',
+    split: 'Split into', splitBtn: 'Split into equal segments', json: 'JSON for WLED',
+    exportHint: 'Send it to POST /json/state on your WLED. Effects and palettes carry their WLED numbers.',
+    copy: 'Copy', copied: 'Copied.', selected: 'Text is selected, press Ctrl+C or ⌘C.',
+    import: 'Import from WLED', importHint: 'Paste the result of http://<your-wled>/json/state or an entry of presets.json.', apply: 'Apply',
+    importOk: 'Applied: {n} segments.', importErr: 'This is not valid JSON: {m}', unknownFx: 'Effects this simulator does not have are shown as Solid: {l}.', unknownPal: 'Palettes it does not have use Default: {l}.', noSegIn: 'No segment with start < stop found.',
+    effect: 'Effect', start: 'Start', stop: 'Stop', on: 'On', reverse: 'Reverse', segBri: 'Segment brightness', palette: 'Palette',
+    remove: 'Remove', replay: 'Restart', overlap: 'Overlaps segment {n}; the later one wins.', noSegs: 'No segment yet. Add one or split the strip.',
+    builtin: 'WLED effects', approx: 'approx.', ledsShort: 'LEDs', meta: '{c} LEDs · {s} segments · {r} rows',
+    langBtn: 'Deutsch', white: 'W',
+    foot: 'The effects are re-written in JavaScript after the WLED 16 source code. Rain, Twinklefox and the two fireworks (≈) are approximations, and effects with random parts never repeat exactly. Colours on a screen are an impression, real LEDs are brighter and more saturated. An independent project, not part of WLED.',
+    ex: { tour: 'A tour: six effects', fire: 'Fire 2012 with the Fire palette', scanner: 'Scanner with two dots', theater: 'Theater lights, warm white', waves: 'Pride 2015 and Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', pick: 'Choose an example…' },
+  },
+  de: {
+    title: 'LED-Streifen-<em>Simulator</em>',
+    sub: 'Für WLED: Streifen in Segmente teilen, jedem einen WLED-Effekt geben und das JSON zur WLED mitnehmen. Die Effekte rechnen wie in WLED 16, mit Gamma 2,8 auf jedem Pixel.',
+    segments: 'Segmente', addSeg: 'Segment hinzufügen', restartAll: 'Alle neu starten', strip: 'Streifen', leds: 'LEDs', type: 'Typ',
+    perRow: 'LEDs pro Reihe', brightness: 'Helligkeit', gamma: 'Gamma-Korrektur 2,8 (WLED-Standard)', examples: 'Beispiele',
+    split: 'Teilen in', splitBtn: 'In gleiche Segmente teilen', json: 'JSON für WLED',
+    exportHint: 'Per POST an /json/state deiner WLED senden. Effekte und Paletten stehen mit ihrer WLED-Nummer drin.',
+    copy: 'Kopieren', copied: 'Kopiert.', selected: 'Text ist markiert, mit Strg+C oder ⌘C kopieren.',
+    import: 'Aus WLED übernehmen', importHint: 'Inhalt von http://<deine-wled>/json/state oder einen Eintrag aus presets.json einfügen.', apply: 'Übernehmen',
+    importOk: 'Übernommen: {n} Segmente.', importErr: 'Das ist kein gültiges JSON: {m}', unknownFx: 'Effekte, die der Simulator nicht kennt, sind als Solid gezeigt: {l}.', unknownPal: 'Paletten, die er nicht kennt, nutzen Default: {l}.', noSegIn: 'Kein Segment mit Start < Stop gefunden.',
+    effect: 'Effekt', start: 'Start', stop: 'Stop', on: 'An', reverse: 'Rückwärts', segBri: 'Segment-Helligkeit', palette: 'Palette',
+    remove: 'Entfernen', replay: 'Neu starten', overlap: 'Überschneidet sich mit Segment {n}; das spätere gewinnt.', noSegs: 'Noch kein Segment. Lege eins an oder teile den Streifen.',
+    builtin: 'WLED-Effekte', approx: 'angenähert', ledsShort: 'LEDs', meta: '{c} LEDs · {s} Segmente · {r} Reihen',
+    langBtn: 'English', white: 'W',
+    foot: 'Die Effekte sind nach dem Quelltext von WLED 16 in JavaScript nachgebaut. Rain, Twinklefox und die beiden Feuerwerke (≈) sind angenähert, und Effekte mit Zufall wiederholen sich nie genau. Farben auf dem Bildschirm sind ein Eindruck, echte LEDs sind heller und satter. Ein unabhängiges Projekt, kein Teil von WLED.',
+    ex: { tour: 'Rundgang: sechs Effekte', fire: 'Fire 2012 mit der Fire-Palette', scanner: 'Scanner mit zwei Punkten', theater: 'Lauflicht, warmweiß', waves: 'Pride 2015 und Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', pick: 'Beispiel wählen …' },
+  },
+};
+let lang = 'en';
+try { const saved = localStorage.getItem('wss-lang'); lang = saved || ((navigator.language || '').toLowerCase().startsWith('de') ? 'de' : 'en'); } catch (e) { lang = (navigator.language || '').toLowerCase().startsWith('de') ? 'de' : 'en'; }
+const t = (k, v) => { let s = T[lang][k] ?? T.en[k] ?? k; if (v) for (const x in v) s = s.replace('{' + x + '}', v[x]); return s; };
+
+/* ================= colour helpers ================= */
+const BLACK = [0, 0, 0, 0];
+const GL = new Float32Array(256); for (let i = 0; i < 256; i++) GL[i] = Math.pow(i / 255, 2.8) * 255;
+const rnd = n => n > 0 ? Math.floor(Math.random() * n) : 0;
+const mix = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, (a[3] || 0) + ((b[3] || 0) - (a[3] || 0)) * k];
+const isBlack = c => !c[0] && !c[1] && !c[2] && !c[3];
+const scale8 = (i, s) => (Math.floor(i) * (1 + Math.floor(s))) >> 8;
+const fadeC = (c, a) => { const k = (a + 1) / 256; return c.map(v => v ? Math.max(1, v * k) : 0); };
+const tri8 = x => x < 128 ? x << 1 : 255 - ((x - 128) << 1);
+const sin8 = x => Math.round(128 + 127 * Math.sin(x / 256 * 2 * Math.PI));
+const cos8 = x => Math.round(128 + 127 * Math.cos(x / 256 * 2 * Math.PI));
+const tri16 = x => { x = Math.floor(x) & 0xFFFF; return x < 0x8000 ? x * 2 : 0xFFFF - (x - 0x8000) * 2; };
+function hashU(i) { let x = Math.imul(i, 2654435761 | 0) >>> 0; x ^= x >>> 16; x = Math.imul(x, 0x7feb352d) >>> 0; x ^= x >>> 15; x = Math.imul(x, 0x846ca68b | 0) >>> 0; x ^= x >>> 16; return x >>> 0; }
+const hashF = n => hashU(n) / 4294967296;
+function perlin8(x, y) {
+  const xi = x >> 8, yi = y >> 8, xf = (x & 255) / 256, yf = (y & 255) / 256, sx = xf * xf * (3 - 2 * xf), sy = yf * yf * (3 - 2 * yf);
+  const h = (a, b) => (hashU(((a & 0xFF) * 374761 + (b & 0xFFFF) * 668265) | 0) & 255);
+  const a = h(xi, yi), b = h(xi + 1, yi), c = h(xi, yi + 1), d = h(xi + 1, yi + 1), top = a + (b - a) * sx, bot = c + (d - c) * sx;
+  return 16 + (top + (bot - top) * sy) * 224 / 255;
+}
+/* ================= palettes (as in WLED 16, palettes.cpp) ================= */
+const HX = a => a.map(h => [h >> 16 & 255, h >> 8 & 255, h & 255, 0]);
+const P16 = {
+  6: HX([0x9B00D5,0xBD00B8,0xDA0092,0xF3005C,0xF45500,0xDC8F00,0xD5B400,0xD5D500,0xD59B00,0xEF6600,0xF90044,0xE10086,0xC400B0,0xA300CF,0x7600E8,0x0032FC]),
+  7: HX([0x0000FF,0x00008B,0x00008B,0x00008B,0x00008B,0x00008B,0x00008B,0x00008B,0x0000FF,0x00008B,0x87CEEB,0x87CEEB,0xADD8E6,0xFFFFFF,0xADD8E6,0x87CEEB]),
+  8: HX([0x000000,0x800000,0x000000,0x800000,0x8B0000,0x8B0000,0x800000,0x8B0000,0x8B0000,0x8B0000,0xFF0000,0xFFA500,0xFFFFFF,0xFFA500,0xFF0000,0x8B0000]),
+  9: HX([0x191970,0x00008B,0x191970,0x000080,0x00008B,0x0000CD,0x2E8B57,0x008080,0x5F9EA0,0x0000FF,0x008B8B,0x6495ED,0x7FFFD4,0x2E8B57,0x00FFFF,0x87CEFA]),
+  10: HX([0x006400,0x006400,0x556B2F,0x006400,0x008000,0x228B22,0x6B8E23,0x008000,0x2E8B57,0x66CDAA,0x32CD32,0x9ACD32,0x90EE90,0x7CFC00,0x66CDAA,0x228B22]),
+  11: HX([0xFF0000,0xEB7000,0xD59B00,0xD5BA00,0xD5D500,0x9CEB00,0x00FF00,0x00EB70,0x00D59B,0x009CD4,0x0000FF,0x7000EB,0x9B00D5,0xBA00BB,0xD5009B,0xEB0072]),
+  12: HX([0xFF0000,0x000000,0xD59B00,0x000000,0xD5D500,0x000000,0x00FF00,0x000000,0x00D59B,0x000000,0x0000FF,0x000000,0x9B00D5,0x000000,0xD5009B,0x000000]),
+};
+// gradient palettes: index, r, g, b ... (loaded into 16 entries like FastLED's loadDynamicGradientPalette)
+const GRAD = {
+  13: [0,181,0,0, 22,218,85,0, 51,255,170,0, 85,211,85,77, 135,167,0,169, 198,73,0,188, 255,0,0,207],       // Sunset
+  26: [0,12,45,0, 19,101,86,2, 38,207,128,4, 63,243,197,18, 66,109,196,146, 255,5,39,7],                       // Beech
+  35: [0,0,0,0, 46,77,0,0, 96,177,0,0, 108,196,38,9, 119,215,76,19, 146,235,115,29, 174,255,153,41,           // Fire
+       188,255,178,41, 202,255,204,41, 218,255,230,41, 234,255,255,41, 244,255,255,143, 255,255,255,255],
+};
+function fillGradient(e, a, ca, b, cb) {
+  if (b < a) { [a, b] = [b, a]; [ca, cb] = [cb, ca]; }
+  const n = b - a, div = n || 1, d = [0, 1, 2].map(k => Math.trunc(((cb[k] - ca[k]) << 7) / div) * 2);
+  const acc = [0, 1, 2].map(k => ca[k] << 8);
+  for (let i = a; i <= b; i++) { e[i] = [acc[0] >> 8, acc[1] >> 8, acc[2] >> 8, 0]; for (let k = 0; k < 3; k++) acc[k] += d[k]; }
+}
+function gradTo16(g) {
+  const e = new Array(16).fill(null).map(() => [0, 0, 0, 0]), count = g.length / 4;
+  let last = -1, i = 0, start = [g[1], g[2], g[3]], istart = 0;
+  while (istart < 255) {
+    i++; const iend = g[i * 4], end = [g[i * 4 + 1], g[i * 4 + 2], g[i * 4 + 3]];
+    let s8 = istart >> 4, e8 = iend >> 4;
+    if (count < 16) { if (s8 <= last && last < 15) { s8 = last + 1; if (e8 < s8) e8 = s8; } last = e8; }
+    fillGradient(e, s8, start, e8, end); istart = iend; start = end;
+  }
+  return e;
+}
+for (const k in GRAD) P16[k] = gradTo16(GRAD[k]);
+const PAL_IDS = [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 26, 35];
+const PAL_NAMES = { 0: 'Default', 5: '* Colors Only', 6: 'Party', 7: 'Cloud', 8: 'Lava', 9: 'Ocean', 10: 'Forest', 11: 'Rainbow', 12: 'Rainbow Bands', 13: 'Sunset', 26: 'Beech', 35: 'Fire' };
+
+// palette 0 means the effect's default palette (from its metadata), Party if it has none
+const defPal = sp => { const d = FX[sp.fx] && FX[sp.fx].info.def.pal; return d > 0 ? d : 6; };
+function pal16(sp, id) {
+  if (id === 5) { const [a, b, c] = sp.col; return isBlack(c) ? [a, a, a, a, a, a, a, a, b, b, b, b, b, b, b, b] : [a, a, a, a, a, b, b, b, b, b, c, c, c, c, c, a]; }
+  return P16[id] || P16[6];
+}
+// FastLED ColorFromPalette; blend: 0 none, 1 linear with wrap, 2 linear without wrap
+function cfpal(p, idx, bri = 255, blend = 2) {
+  idx = Math.floor(idx) & 255; if (blend === 2) idx = scale8(idx, 239);
+  const hi = idx >> 4, lo = idx & 15, a = p[hi]; let c = a;
+  if (lo && blend) { const b = p[hi === 15 ? 0 : hi + 1], f = lo / 16; c = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, 0]; }
+  return bri === 255 ? c : c.map(v => v * (bri + 1) / 256);
+}
+// Segment::color_from_palette: palette 0 with mcol 0..2 returns the segment colour, mcol 255 uses the default palette
+function cfp(s, i, mapping, mcol = 0, pbri = 255, moving = false) {
+  const sp = s.sp;
+  if (!sp.pal && mcol < 3) return pbri === 255 ? sp.col[mcol] : fadeC(sp.col[mcol], pbri);
+  const idx = mapping ? Math.min(Math.floor(i * 255 / s.L), 255) : i;
+  return cfpal(pal16(sp, sp.pal || defPal(sp)), idx, pbri, moving ? 1 : 2);
+}
+function palColor(sp, idx, moving) { if (!sp.pal) return sp.col[0]; return cfpal(pal16(sp, sp.pal), idx, 255, moving ? 1 : 2); }
+const colAt = (s, i) => cfp(s, i, true);                         // color_from_palette(i, mapping)
+// Segment::color_wheel: palette if one is set, otherwise FastLED's rainbow HSV
+const wheel = (sp, pos) => sp.pal ? cfpal(pal16(sp, sp.pal), pos, 255, 1) : hsvRainbow(pos & 255, 255, 255);
+
+/* ================= WLED / FastLED maths ================= */
+// sin16_t from wled_math.cpp (Bhaskara approximation)
+function sin16(theta) {
+  theta &= 0xFFFF; let sc = 1; if (theta > 0x7FFF) { theta = 0xFFFF - theta; sc = -1; }
+  const pre = theta * (0x7FFF - theta); return sc * Math.trunc(pre * (4 * 0x7FFF) / (1342095361 - pre));
+}
+const sin8w = x => (sin16((x & 255) * 257) + 32767) >> 8;
+const scale16 = (i, s) => Math.floor(i * (1 + s) / 65536);
+const beat88 = (bpm88, t) => Math.imul(Math.imul(t >>> 0, bpm88), 280) >>> 16;                 // 32-bit wrap like millis()
+const beatsin88 = (bpm88, lo, hi, t) => (lo + scale16((sin16(beat88(bpm88, t)) + 32768) & 0xFFFF, (hi - lo) & 0xFFFF)) & 0xFFFF;
+const beatsin16 = (bpm, lo, hi, t) => beatsin88(bpm < 256 ? bpm << 8 : bpm, lo, hi, t);
+const triwave8 = x => { x &= 255; if (x & 0x80) x = 255 - x; return (x << 1) & 255; };
+const ease8InOutCubic = i => ((i * i * ((3 << 8) - (i << 1))) >>> 16) & 255;
+const cubicwave8 = x => ease8InOutCubic(triwave8(x));
+const map = (x, a, b, c, d) => Math.trunc((x - a) * (d - c) / (b - a)) + c;   // Arduino map()
+const rndRange = (a, b) => b > a ? a + rnd(b - a) : a;                          // hw_random8(min, max)
+const pack = c => (((Math.round(c[3] || 0) & 255) << 24) | ((Math.round(c[0]) & 255) << 16) | ((Math.round(c[1]) & 255) << 8) | (Math.round(c[2]) & 255)) >>> 0;
+const unpack = v => [v >>> 16 & 255, v >>> 8 & 255, v & 255, v >>> 24];
+// hsv2rgb_rainbow from fastled_slim.cpp (8-bit hue)
+function hsvRainbow(hue, sat, val) {
+  const third16 = ((hue & 0x1F) << 8) * 21846, third = third16 >> 21, two = third16 >> 20; let r, g, b;
+  if (!(hue & 0x80)) {
+    if (!(hue & 0x40)) { if (!(hue & 0x20)) { r = 255 - third; g = third; b = 0; } else { r = 171; g = 85 + third; b = 0; } }
+    else { if (!(hue & 0x20)) { r = 171 - two; g = 170 + third; b = 0; } else { r = 0; g = 255 - third; b = third; } }
+  } else {
+    if (!(hue & 0x40)) { if (!(hue & 0x20)) { r = 0; g = 171 - two; b = 85 + two; } else { r = third; g = 0; b = 255 - third; } }
+    else { if (!(hue & 0x20)) { r = 85 + third; g = 0; b = 171 - third; } else { r = 170 + third; g = 0; b = 85 - third; } }
+  }
+  if (sat !== 255) {
+    if (sat === 0) { r = g = b = 255; } else {
+      const desat = (255 - sat) * (255 - sat), floor = desat >> 8, ss = 0xFFFF - desat;
+      if (r) r = (r * ss) >> 16; if (g) g = (g * ss) >> 16; if (b) b = (b * ss) >> 16; r += floor; g += floor; b += floor;
+    }
+  }
+  if (val !== 255) {
+    if (val === 0) { r = g = b = 0; } else {
+      const v = val * val + 512; if (r) r = ((r * v) >> 16) + 1; if (g) g = ((g * v) >> 16) + 1; if (b) b = ((b * v) >> 16) + 1;
+    }
+  }
+  return [r & 255, g & 255, b & 255, 0];
+}
+// gamma32inv: WLED 16 applies gamma on output, so colours made for "linear" look are pre-corrected
+const GINV = new Float32Array(256); for (let i = 0; i < 256; i++) GINV[i] = Math.pow(i / 255, 1 / 2.8) * 255;
+const invGamma = c => strip.gamma ? c.map(v => GINV[Math.max(0, Math.min(255, Math.round(v)))]) : c;
+
+/* ================= pixel helpers ================= */
+function put(s, i, c, k) { if (i < 0 || i >= s.L) return; if (k === undefined) k = 1; const o = i * 4, p = s.px; p[o] = c[0] * k; p[o + 1] = c[1] * k; p[o + 2] = c[2] * k; p[o + 3] = (c[3] || 0) * k; }
+function putMax(s, i, c, k) { if (i < 0 || i >= s.L) return; const o = i * 4, p = s.px; for (let ch = 0; ch < 4; ch++) { const v = (c[ch] || 0) * k; if (v > p[o + ch]) p[o + ch] = v; } }
+function fill(s, c, k) { for (let i = 0; i < s.L; i++) put(s, i, c, k); }
+const getPx = (s, i) => { const o = i * 4, p = s.px; return [p[o], p[o + 1], p[o + 2], p[o + 3]]; };
+// Segment::blendPixelColor / color_blend(old, c, b)
+function blendPx(s, i, c, b) { if (i < 0 || i >= s.L) return; put(s, i, mix(getPx(s, i), c, b / 255)); }
+// Segment::fade_out: every channel moves towards colour 2 (background)
+function fadeOut(s, rate) {
+  rate = (256 - rate) >> 1; const mr = Math.floor(256 / (rate + 1)), bg = s.sp.col[1], p = s.px;
+  for (let i = 0; i < s.L; i++) for (let ch = 0; ch < 4; ch++) {
+    const o = i * 4 + ch, c1 = Math.round(p[o]), c2 = bg[ch] || 0; let d = Math.trunc((c2 - c1) * mr / 256);
+    if (d === 0 && c2 !== c1) d = c2 > c1 ? 1 : -1; p[o] = c1 + d;
+  }
+}
+// Segment::blur (1D)
+function blur1d(s, amt) {
+  if (!amt) return; const keep = 255 - amt, seep = amt >> 1, sc = (c, a) => c.map(v => v * (a + 1) / 256), add = (a, b) => a.map((v, k) => Math.min(255, v + b[k]));
+  let carry = null, lastnew = null, curnew = BLACK;
+  for (let i = 0; i < s.L; i++) {
+    const cur = getPx(s, i), part = sc(cur, seep); curnew = sc(cur, keep);
+    if (i > 0) { if (carry) curnew = add(curnew, carry); put(s, i - 1, add(lastnew, part)); } else put(s, i, curnew);
+    lastnew = curnew; carry = part;
+  }
+  put(s, s.L - 1, curnew);
+}
+
+/* ================= effects ================= */
+const FX = {};
+const add = (key, meta, f, extra = {}) => { FX[key] = Object.assign({ key, meta, f, info: parseMeta(meta) }, extra); };
+
+/* ---- WLED effects (numbers as in WLED 16) ---- */
+add(0, 'Solid@;!;', s => fill(s, colAt(s, 0)));
+add(1, 'Blink@!,Duty cycle;!,!;!;01', (s, t) => {
+  const sp = s.sp, cyc = (255 - sp.sx) * 20 + 48, onTime = 24 + ((cyc - 48) * sp.ix >> 8), it = Math.floor(t / cyc);
+  const on = it !== s.st.it || (t % cyc) <= onTime; s.st.it = it;
+  if (on) for (let i = 0; i < s.L; i++) put(s, i, colAt(s, i)); else fill(s, sp.col[1]);
+});
+add(2, 'Breathe@!;!,!;!;01', (s, t) => {
+  const sp = s.sp; let c = Math.floor(t * ((sp.sx >> 3) + 10)) & 0xFFFF; c = (c >> 2) + (c >> 4); let v = 0;
+  if (c < 16384) { if (c > 8192) c = 8192 - (c - 8192); v = Math.sin(c / 65536 * 2 * Math.PI) * 32767 / 103; }
+  for (let i = 0; i < s.L; i++) put(s, i, mix(sp.col[1], colAt(s, i), (30 + v) / 255));
+});
+add(3, 'Wipe@!,!;!,!;!', (s, t) => {
+  const sp = s.sp, L = s.L, cyc = 750 + (255 - sp.sx) * 150; let prog = Math.floor((t % cyc) * 65535 / cyc); const back = prog > 32767; if (back) prog -= 32767;
+  const li = (prog * L) >> 15, rem = Math.min(255, Math.floor(((prog * L) * 2 & 0xFFFF) / (sp.ix + 1)));
+  for (let i = 0; i < L; i++) { const a = colAt(s, i), b = sp.col[1];
+    if (i < li) put(s, i, back ? b : a); else { put(s, i, back ? a : b); if (i === li) put(s, i, mix(back ? a : b, back ? b : a, rem / 255)); } }
+});
+add(8, 'Colorloop@!,Saturation;;!;01', (s, t) => {
+  const sp = s.sp, counter = (Math.floor(t * ((sp.sx >> 2) + 2)) & 0xFFFF) >> 8, c = wheel(sp, counter);
+  fill(s, sp.ix < 128 ? mix(c, [255, 255, 255, 0], (128 - sp.ix) / 255) : c);
+});
+add(9, 'Rainbow@!,Size;;!', (s, t) => {
+  const sp = s.sp, counter = (Math.floor(t * ((sp.sx >> 2) + 2)) & 0xFFFF) >> 8, mul = 16 << Math.floor(sp.ix / 29);
+  for (let i = 0; i < s.L; i++) put(s, i, wheel(sp, (Math.floor(i * mul / s.L) + counter) & 255));
+});
+add(41, 'Lighthouse@!,Fade rate;!,!;!', (s, t) => {
+  const sp = s.sp, L = s.L, p = s.px, st = s.st, counter = Math.floor(t * ((sp.sx >> 2) + 1)) & 0xFFFF, index = Math.floor(counter * L / 65536);
+  if (st.a0 === undefined) st.a0 = index;
+  const m = ((255 - sp.ix) >> 1) + 1.1, tg = sp.col[1];
+  for (let i = 0; i < p.length; i++) { const cur = p[i], tv = tg[i & 3] || 0; if (cur === tv) continue; let d = Math.trunc((tv - cur) / m); d += tv > cur ? 1 : -1; let nv = cur + d; if ((d > 0 && nv > tv) || (d < 0 && nv < tv)) nv = tv; p[i] = nv; }
+  put(s, index, colAt(s, index));
+  if (index > st.a0) { for (let i = st.a0; i < index; i++) put(s, i, colAt(s, i)); } else if (index < st.a0 && index < 10) { for (let i = 0; i < index; i++) put(s, i, colAt(s, i)); }
+  st.a0 = index;
+});
+add(43, 'Rain@!,Spawning rate;!,!;!;12;ix=128,pal=0', s => {
+  const sp = s.sp, L = s.L, st = s.st, p = s.px; if (!st.d) st.d = [];
+  for (let i = 0; i < p.length; i++) p[i] *= 0.8;
+  if (Math.random() < 0.08 + sp.ix / 255 * 0.45) st.d.push({ x: rnd(L), v: (30 + sp.sx / 255 * 140) * (0.6 + Math.random() * 0.8), life: 0.25 + Math.random() * 0.5, age: 0, c: sp.pal ? palColor(sp, rnd(256)) : sp.col[0] });
+  st.d = st.d.filter(d => { d.age += 0.024; d.x -= d.v * 0.024; if (d.age > d.life || d.x < 0) return false; putMax(s, Math.floor(d.x), d.c, 1 - d.age / d.life); return true; });
+}, { approx: true });
+add(57, 'Lightning@!,!;!,!;!', (s, t) => {
+  const sp = s.sp, L = s.L, st = s.st; if (st.a1 === undefined) { st.a1 = 0; st.a0 = 0; st.step = t; }
+  const ls = rnd(L), ll = 1 + rnd(L - ls); let bri = 255 / (1 + rnd(2));
+  if (st.a1 === 0) { st.a1 = (4 + rnd(Math.floor(sp.ix / 20))) * 2; bri = 52; st.a0 = 200; }
+  fill(s, sp.col[1]);
+  if (st.a1 > 3 && !(st.a1 & 1)) { for (let i = ls; i < ls + ll; i++) put(s, i, colAt(s, i), bri / 255); st.a1--; st.step = t; }
+  else if (t - st.step > st.a0) { st.a1--; if (st.a1 < 2) st.a1 = 0; st.a0 = 50 + rnd(100); if (st.a1 === 2) st.a0 = rnd(255 - sp.sx) * 100; st.step = t; }
+});
+add(74, 'Colortwinkles@Fade speed,Spawn speed;;!;;m12=0', s => {
+  const sp = s.sp, L = s.L, st = s.st; if (!st.c) { st.c = new Array(L).fill(null); st.l = new Float32Array(L); st.u = new Uint8Array(L); }
+  const fu = 8 + (sp.sx >> 2), fd = 8 + (sp.sx >> 3);
+  for (let i = 0; i < L; i++) {
+    const c = st.c[i]; if (!c) { put(s, i, BLACK); continue; } const mx = Math.max(c[0], c[1], c[2]) || 1;
+    if (st.u[i]) { st.l[i] *= 1 + fu / 256; if (mx * st.l[i] >= 255) { st.l[i] = 255 / mx; st.u[i] = 0; } }
+    else { st.l[i] *= (255 - fd) / 256; if (mx * st.l[i] < 1) { st.c[i] = null; put(s, i, BLACK); continue; } }
+    put(s, i, c, st.l[i]);
+  }
+  for (let j = 0; j <= Math.floor(L / 50); j++) if (rnd(256) <= sp.ix) for (let k = 0; k < 5; k++) { const i = rnd(L); if (!st.c[i]) { st.c[i] = sp.pal ? palColor(sp, rnd(256)) : cfpal(P16[6], rnd(256), 255, 1); st.l[i] = 64 / 255; st.u[i] = 1; break; } }
+});
+add(80, 'Twinklefox@!,Twinkle rate;!,!;!', (s, t) => {
+  const sp = s.sp, L = s.L, spd = 0.35 + sp.sx / 255 * 1.6, dens = sp.ix / 255;
+  for (let i = 0; i < L; i++) {
+    const rate = spd * (0.55 + 0.9 * hashF(i * 31 + 7)), cyc = t / 1000 * rate * 0.6 + hashF(i * 17 + 3), n = Math.floor(cyc), f = cyc - n;
+    if (hashF(i * 131 + n * 7919) > dens) { put(s, i, sp.col[1]); continue; }
+    const b = f < 0.25 ? f / 0.25 : (1 - f) / 0.75, c = sp.pal ? palColor(sp, Math.floor(hashF(i * 57 + n * 104729) * 256)) : sp.col[0];
+    put(s, i, mix(sp.col[1], c, b * b));
+  }
+}, { approx: true });
+add(85, 'Spots@Spread,Width;!,!;!', s => {
+  const sp = s.sp, L = s.L, thr = (255 - sp.sx) << 8, zones = 1 + ((sp.ix * (L >> 2)) >> 8), zl = Math.floor(L / zones), off = (L - zones * zl) >> 1;
+  fill(s, sp.col[1]);
+  for (let z = 0; z < zones; z++) { const pos = off + z * zl;
+    for (let i = 0; i < zl; i++) { const w = tri16(i * 0xFFFF / zl); if (w > thr) put(s, pos + i, mix(sp.col[1], colAt(s, pos + i), Math.floor((w - thr) * 255 / (0xFFFF - thr)) / 255)); } }
+});
+add(89, 'Fireworks Starburst@Chance,Fragments;,!;!;;pal=11,m12=0', (s, t) => {
+  const sp = s.sp, L = s.L, st = s.st; if (!st.stars) st.stars = []; fill(s, sp.col[1]);
+  if (st.stars.length < Math.min(15, 1 + (L >> 3)) && rnd(144 - (sp.sx >> 1)) === 0) {
+    const n = 3 + Math.floor(sp.ix / 32) + rnd(3), vmax = 6 + L * 0.35, fr = []; for (let k = 0; k < n; k++) fr.push((Math.random() * 2 - 1) * vmax);
+    st.stars.push({ x: rnd(L), born: t, fr, c: sp.pal ? palColor(sp, rnd(256)) : sp.col[0] });
+  }
+  st.stars = st.stars.filter(star => {
+    const age = (t - star.born) / 1000; if (age > 1.75) return false; let c, fade = 0;
+    if (age < 0.25) c = mix([255, 255, 255, 0], star.c, age / 0.25); else { fade = (age - 0.25) / 1.5; c = mix(star.c, BLACK, fade); }
+    const size = Math.max(1, (1 - fade) * 2), tr = 0.45 * (1 - Math.exp(-age / 0.45));
+    for (const v of star.fr) { const x = star.x + v * tr; for (let q = 0; q < size; q++) putMax(s, Math.floor(x) + q, c, 1); }
+    return true;
+  });
+}, { approx: true });
+add(90, 'Fireworks 1D@Gravity,Firing side;!,!;!;12;pal=11,ix=128', (s, t) => {
+  const sp = s.sp, L = s.L, st = s.st, dt = 0.024, g = L * (0.6 + sp.sx / 255 * 1.3), fromEnd = sp.ix > 127;
+  if (!st.mode) { st.mode = 'wait'; st.until = t + 200 + rnd(600); }
+  fill(s, sp.col[1]);
+  const at = x => fromEnd ? L - 1 - Math.floor(x) : Math.floor(x);
+  if (st.mode === 'wait' && t >= st.until) { st.mode = 'flare'; st.fx = 0; st.fv = Math.sqrt(2 * g * L * (0.45 + Math.random() * 0.45)); st.c = sp.pal ? palColor(sp, rnd(256)) : sp.col[0]; }
+  if (st.mode === 'flare') {
+    st.fx += st.fv * dt; st.fv -= g * dt; putMax(s, at(st.fx), [255, 240, 210, 0], 0.9); putMax(s, at(st.fx - 1), [255, 170, 80, 0], 0.45);
+    if (st.fv <= 0) { st.mode = 'boom'; st.sp = []; const n = Math.max(10, L >> 2), v0 = Math.sqrt(2 * g * L * 0.15);
+      for (let k = 0; k < n; k++) st.sp.push({ x: st.fx, v: (Math.random() * 2 - 1) * v0 * (0.35 + Math.random() * 0.65), h: 1, d: 1 / (1.1 + Math.random() * 0.6) }); }
+  }
+  if (st.mode === 'boom') { let alive = 0;
+    for (const q of st.sp) { if (q.h <= 0) continue; q.x += q.v * dt; q.v -= g * 0.25 * dt; q.h -= q.d * dt; if (q.h <= 0 || q.x < 0 || q.x >= L) { q.h = 0; continue; } alive++;
+      const c = q.h > 0.8 ? mix(st.c, [255, 255, 255, 0], (q.h - 0.8) / 0.2) : mix(BLACK, st.c, q.h / 0.8); putMax(s, at(q.x), c, 1); }
+    if (!alive) { st.mode = 'wait'; st.until = t + 150 + rnd(700); } }
+}, { approx: true });
+add(98, 'Percent@!,% of fill,,,,One color;!,!;!', s => {
+  const sp = s.sp, L = s.L, st = s.st, pct = Math.min(sp.ix, 200), active = Math.round(pct < 100 ? L * pct / 100 : L * (200 - pct) / 100), size = sp.sx === 255 ? 255 : 1 + ((sp.sx * L) >> 11);
+  if (st.a1 === undefined) st.a1 = 0;
+  for (let i = 0; i < L; i++) { const lit = pct <= 100 ? i < st.a1 : i >= L - st.a1; put(s, i, lit ? (sp.o1 ? palColor(sp, Math.floor(Math.min(pct, 100) * 255 / 100)) : colAt(s, i)) : sp.col[1]); }
+  if (active > st.a1) st.a1 = Math.min(active, st.a1 + size); else if (active < st.a1) { st.a1 = st.a1 > size ? st.a1 - size : 0; if (st.a1 < active) st.a1 = active; }
+});
+add(102, 'Candle Multi@!,!;!,!;!;;sx=96,ix=224,pal=0', s => {
+  const sp = s.sp, L = s.L, st = s.st;
+  if (!st.v) { st.v = new Uint8Array(L).fill(160); st.tg = new Uint8Array(L).fill(170); st.fs = new Uint8Array(L).fill(1); st.up = new Uint8Array(L).fill(1); }
+  const valrange = sp.ix, rndval = valrange >> 1, sf = sp.sx > 252 ? 1 : sp.sx > 99 ? 2 : sp.sx > 49 ? 3 : 4;
+  for (let i = 0; i < L; i++) {
+    let v = st.v[i], tg = st.tg[i], fs = st.fs[i], up = st.up[i], nt = false;
+    if (up) { if (v + fs <= tg) v += fs; else nt = true; } else { if (v - fs >= tg) v -= fs; else nt = true; }
+    if (nt) { tg = rnd(rndval) + rnd(rndval); if (tg < (rndval >> 1)) tg = (rndval >> 1) + rnd(rndval); tg = Math.min(255, tg + (255 - valrange)); fs = Math.abs(tg - v) >> sf; if (fs === 0) fs = 1; up = tg > v ? 1 : 0; }
+    st.v[i] = v; st.tg[i] = tg; st.fs[i] = fs; st.up[i] = up;
+    put(s, i, mix(sp.col[1], colAt(s, i), v / 255));
+  }
+});
+
+add(10, 'Scan@!,# of dots,,,,,Overlay;!,!,!;!', (s, t) => scan(s, t, false));
+add(11, 'Scan Dual@!,# of dots,,,,,Overlay;!,!,!;!', (s, t) => scan(s, t, true));
+function scan(s, t, dual) {
+  const sp = s.sp, L = s.L; if (L <= 1) return fill(s, sp.col[0]);
+  const cyc = 750 + (255 - sp.sx) * 150, prog = Math.floor((t % cyc) * 65535 / cyc), size = 1 + ((sp.ix * L) >> 9);
+  const ledIndex = (prog * (L * 2 - size * 2)) >> 16, off = Math.abs(ledIndex - (L - size));
+  if (!sp.o2) fill(s, sp.col[1]);
+  if (dual) for (let j = off; j < off + size; j++) { const i2 = L - 1 - j; put(s, i2, cfp(s, i2, true, isBlack(sp.col[2]) ? 0 : 2)); }
+  for (let j = off; j < off + size; j++) put(s, j, cfp(s, j, true));
+}
+add(12, 'Fade@!;!,!;!;01', (s, t) => {
+  const sp = s.sp, lum = tri16(Math.imul(t >>> 0, (sp.sx >> 3) + 10) & 0xFFFF) >> 8;
+  for (let i = 0; i < s.L; i++) put(s, i, mix(sp.col[1], cfp(s, i, true), lum / 255));
+});
+// running(): Theater and Theater Rainbow
+function running(s, t, c1At, theatre) {
+  const sp = s.sp, st = s.st, width = (theatre ? 3 : 1) + (sp.ix >> 4), it = Math.floor(t / (50 + (255 - sp.sx)));
+  if (st.aux0 === undefined) { st.aux0 = 0; st.step = 0; }
+  for (let i = 0; i < s.L; i++) {
+    let col = sp.col[1];
+    if (theatre) { if (i % width === st.aux0) col = c1At(i); }
+    else { const pos = i % (width << 1); if (pos < st.aux0 - width || (pos >= st.aux0 && pos < st.aux0 + width)) col = c1At(i); }
+    put(s, i, col);
+  }
+  if (it !== st.step) { st.aux0 = (st.aux0 + 1) % (theatre ? width : width << 1); st.step = it; }
+}
+add(13, 'Theater@!,Gap size;!,!;!', (s, t) => running(s, t, i => cfp(s, i, true), true));
+add(14, 'Theater Rainbow@!,Gap size;,!;!', (s, t) => running(s, t, () => wheel(s.sp, (s.st.step || 0) & 255), true));
+// running_base(): Running and Saw
+function runningBase(s, t, saw) {
+  const sp = s.sp, xs = sp.ix >> 2, counter = Math.floor(t * sp.sx / 512);
+  for (let i = 0; i < s.L; i++) {
+    let a = (i * xs - counter) & 0xFF;
+    if (saw) { a = a < 16 ? 192 + a * 8 : map(a, 16, 255, 64, 192); a = (255 - a) & 0xFF; }
+    put(s, i, mix(sp.col[1], cfp(s, i, true), sin8w(a) / 255));
+  }
+}
+add(15, 'Running@!,Wave width;!,!;!', (s, t) => runningBase(s, t, false));
+add(16, 'Saw@!,Width;!,!;!', (s, t) => runningBase(s, t, true));
+add(17, 'Twinkle@!,!;!,!;!;;m12=0', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; fadeOut(s, 224);
+  if (st.aux0 === undefined) { st.aux0 = 0; st.aux1 = rnd(65536); st.step = 0; }
+  const it = Math.floor(t / (20 + (255 - sp.sx) * 5));
+  if (it !== st.step) { const maxOn = map(sp.ix, 0, 255, 1, L); if (st.aux0 >= maxOn) { st.aux0 = 0; st.aux1 = rnd(65536); } st.aux0++; st.step = it; }
+  let prng = st.aux1;
+  for (let i = 0; i < st.aux0; i++) { prng = (Math.imul(prng, 2053) + 13849) & 0xFFFF; const j = Math.floor(L * prng / 65536); put(s, j, cfp(s, j, true)); }
+});
+add(18, 'Dissolve@Repeat speed,Dissolve speed,,,,Random,Complete;!,!;!', s => {
+  const sp = s.sp, st = s.st, L = s.L, bg = pack(sp.col[1]);
+  if (!st.px) { st.px = new Array(L).fill(bg); st.aux0 = 1; st.step = 0; }
+  const rc = sp.o1 ? wheel(sp, rnd(256)) : null;
+  for (let j = 0; j <= Math.floor(L / 15); j++) if (rnd(256) <= sp.ix) for (let k = 0; k < 10; k++) {
+    const i = rnd(L);
+    if (st.aux0) { if (st.px[i] === bg) { let c = pack(rc || cfp(s, i, true)); if (sp.o2 && c === bg) c = (c ^ 1) >>> 0; st.px[i] = c; break; } }
+    else if (st.px[i] !== bg) { st.px[i] = bg; break; }
+  }
+  let open = 0;
+  for (let i = 0; i < L; i++) { put(s, i, unpack(st.px[i])); if (sp.o2 && (st.aux0 ? st.px[i] === bg : st.px[i] !== bg)) open++; }
+  if (st.step > (255 - sp.sx) + 15) { st.aux0 = st.aux0 ? 0 : 1; st.step = 0; } else if (!sp.o2 || !open) st.step++;
+});
+add(20, 'Sparkle@!,,,,,,Overlay;!,!;!;;m12=0', (s, t) => {
+  const sp = s.sp, st = s.st;
+  if (!sp.o2) for (let i = 0; i < s.L; i++) put(s, i, cfp(s, i, true, 1));
+  const it = Math.floor(t / (10 + (255 - sp.sx) * 2)); if (it !== st.step) { st.aux0 = rnd(s.L); st.step = it; }
+  put(s, st.aux0, sp.col[0]);
+});
+add(23, 'Strobe@!;!,!;!;01', (s, t) => {
+  const sp = s.sp, cyc = (255 - sp.sx) * 20 + 48, it = Math.floor(t / cyc), on = it !== s.st.it || (t % cyc) <= 24; s.st.it = it;
+  if (on) for (let i = 0; i < s.L; i++) put(s, i, colAt(s, i)); else fill(s, sp.col[1]);
+});
+add(40, 'Scanner@!,Trail,Delay,,,Dual,Bi-delay;!,!,!;!;;m12=0,c1=0', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return fill(s, sp.col[0]);
+  if (st.aux0 === undefined) { st.aux0 = 0; st.aux1 = 0; st.step = 0; }
+  const speed = 24 * map(sp.sx, 0, 255, 96, 2), pixels = Math.floor(L / speed);
+  fadeOut(s, 255 - sp.ix);
+  if (st.step > t) return;                                        // pause at the end
+  let index = st.aux1 + pixels;
+  if (pixels === 0) { const frames = Math.floor(speed / L); if (st.step++ < frames) return; st.step = 0; index++; }
+  if (index > L) { st.aux0 = st.aux0 ? 0 : 1; st.aux1 = 0; st.step = (st.aux0 || sp.o2) ? t + sp.c1 * 25 : 0; }
+  else {
+    for (let i = st.aux1; i < index; i++) { const j = st.aux0 ? i : L - 1 - i, c = cfp(s, j, true); put(s, j, c); if (sp.o1) put(s, L - 1 - j, isBlack(sp.col[2]) ? c : sp.col[2]); }
+    st.aux1 = index;
+  }
+});
+add(46, 'Gradient@!,Spread;!,!;!;;ix=16', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return fill(s, sp.col[0]);
+  let pp = ((Math.imul(t >>> 0, (sp.sx >> 2) + 1) & 0xFFFF) * L) >>> 16; if (!st.run) { pp = 0; st.run = true; }
+  const brd = Math.floor(sp.ix / 2), p1 = pp - L, p2 = pp + L;           // WLED: "1 + loading ? ..." always takes intensity/2
+  for (let i = 0; i < L; i++) {
+    let v = Math.min(Math.abs(pp - i), Math.abs(p1 - i), Math.abs(p2 - i)); v = brd > v ? Math.floor(v * 255 / brd) : 255;
+    put(s, i, mix(sp.col[0], cfp(s, i, true, 1), v / 255));
+  }
+});
+// mode_colorwaves_pride_base(): Pride 2015 and Colorwaves
+function prideBase(s, t, pride) {
+  const sp = s.sp, st = s.st, L = s.L; if (st.step === undefined) { st.step = 0; st.aux0 = 0; }
+  const duration = 10 + sp.sx, sat8 = pride ? beatsin88(87, 220, 250, t) : 255, depth = beatsin88(341, 96, 224, t);
+  const btInc = beatsin88(203, 25 * 256, 40 * 256, t), msMul = beatsin88(147, 23, 60, t);
+  const hueInc = pride ? beatsin88(113, 1, 3000, t) : Math.floor(beatsin88(113, 60, 300, t) * sp.ix * 10 / 255);
+  let hue16 = st.aux0; const pseudo = (st.step + duration * msMul) >>> 0, sHue = (st.aux0 + duration * beatsin88(400, 5, 9, t)) & 0xFFFF;
+  let bt = pseudo;
+  for (let i = 0; i < L; i++) {
+    hue16 += hueInc; let hue8;
+    if (pride) hue8 = (hue16 >> 8) & 255; else { const h = hue16 >> 7; hue8 = ((h & 0x100) ? 255 - (h >> 1) : (h >> 1)) & 255; }
+    bt = (bt + btInc) >>> 0; const b16 = sin16(bt) + 32768, bri16 = Math.floor(b16 * b16 / 65536);
+    const bri8 = (Math.floor(bri16 * depth / 65536) + (255 - depth)) & 255;
+    if (pride) blendPx(s, i, invGamma(hsvRainbow(hue8, sat8, bri8)), 64);
+    else blendPx(s, i, cfp(s, hue8, false, 0, bri8), 128);
+  }
+  st.step = pseudo; st.aux0 = sHue;
+}
+add(63, 'Pride 2015@!;;', (s, t) => prideBase(s, t, true));
+add(66, 'Fire 2012@Cooling,Spark rate,,2D Blur,Boost;;!;1;pal=35,sx=64,ix=160,m12=1,c2=128', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return fill(s, sp.col[0]);
+  if (!st.heat) { st.heat = new Uint8Array(L); st.step = -1; }
+  const heat = st.heat, it = t >> 5, ign = Math.max(3, Math.floor(L / 10)) & 255, fresh = it !== st.step;
+  for (let i = 0; i < L; i++) {                                   // 1. cool down every cell a little
+    const cool = fresh ? rnd((Math.floor((20 + Math.floor(sp.sx / 3)) * 16 / L) + 2) & 255) : rnd(4);
+    const minT = i < ign ? Math.floor((ign - i) / 4) + 16 : 0, temp = Math.max(0, heat[i] - cool); heat[i] = temp < minT ? minT : temp;
+  }
+  if (fresh) {
+    for (let k = L - 1; k > 1; k--) heat[k] = Math.floor((heat[k - 1] + (heat[k - 2] << 1)) / 3);   // 2. heat drifts up
+    if (rnd(256) <= sp.ix) {                                       // 3. new sparks near the bottom
+      const y = rnd(ign), boost = Math.floor((17 + sp.c3) * (ign - (y >> 1)) / ign) & 255;
+      heat[y] = Math.min(255, heat[y] + rndRange((96 + 2 * boost) & 255, (207 + boost) & 255));
+    }
+  }
+  const p = pal16(sp, sp.pal || defPal(sp));
+  for (let j = 0; j < L; j++) put(s, j, cfpal(p, Math.min(heat[j], 240), 255, 0));   // 4. heat to colour, no blending
+  st.step = it;
+});
+add(67, 'Colorwaves@!,Hue;!;!;;pal=26', (s, t) => prideBase(s, t, false));
+add(76, 'Meteor@!,Trail,,,,Gradient,,Smooth;;!;1', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return fill(s, sp.col[0]);
+  if (!st.tr) { st.tr = new Uint8Array(L); st.step = 0; }
+  const tr = st.tr, smooth = sp.o3, size = 1 + Math.floor(L / 20), max = sp.pal === 5 || !sp.o1 ? 240 : 255;
+  const mstart = smooth ? map((st.step >> 6) & 0xFF, 0, 255, 0, L - 1) : (Math.imul(Math.imul(t >>> 0, (sp.sx >> 2) + 8), L) >>> 16) & 0xFFFF;
+  for (let i = 0; i < L; i++) {
+    if (rnd(256) > 255 - sp.ix) continue;                          // trail: fade some pixels each frame
+    let col;
+    if (smooth) {
+      if (tr[i] > 0) tr[i] = Math.max(0, Math.min(max, tr[i] + 4 - rnd(24)));
+      col = sp.o1 ? cfp(s, i, true, 0, tr[i]) : cfp(s, tr[i], false, 255, 255, true);
+    } else {
+      tr[i] = scale8(tr[i], 128 + rnd(127));
+      let index = tr[i], idx = 255, bri = sp.pal === 35 ? 255 : tr[i];
+      if (!sp.o1) { idx = 0; index = map(i, 0, L, 0, max); bri = tr[i]; }
+      col = cfp(s, index, false, idx, bri);
+    }
+    put(s, i, col);
+  }
+  for (let j = 0; j < size; j++) {                                // the meteor itself
+    const index = (mstart + j) % L;
+    if (smooth) { tr[index] = max; put(s, index, sp.o1 ? cfp(s, index, true, 0, max) : cfp(s, max, false, 255, 255, true)); }
+    else { tr[index] = max; put(s, index, sp.o1 ? cfp(s, max, false, 255, 255) : cfp(s, map(index, 0, L, 0, max), false, 0, 255)); }
+  }
+  st.step = (st.step + sp.sx + 1) >>> 0;
+});
+add(79, 'Ripple@!,Wave #,Blur,,,,Overlay;,!;!;12;c1=0', s => {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return fill(s, sp.col[0]);
+  if (sp.c1 || sp.o2) fadeOut(s, 250); else fill(s, sp.col[1]);
+  const maxR = Math.min(1 + (L >> 2), 100);
+  if (!st.r || st.r.length !== maxR) st.r = Array.from({ length: maxR }, () => ({ state: 0, pos: 0, color: 0 }));
+  for (const r of st.r) {
+    if (r.state) {
+      const decay = (sp.sx >> 4) + 1, col = cfp(s, r.color, false, 255);
+      const prop = Math.imul(Math.floor(r.state / decay) - 1, sp.sx + 1) >>> 0, propI = prop >>> 8, propF = prop & 0xFF;
+      const amp = r.state < 17 ? triwave8((r.state - 1) * 8) : map(r.state, 17, 255, 255, 2);
+      const left = r.pos - propI - 1, right = r.pos + propI + 2;
+      for (let v = 0; v < 4; v++) { const mag = scale8(cubicwave8((propF >> 2) + v * 64), amp); blendPx(s, left + v, col, mag); blendPx(s, right - v, col, mag); }
+      r.state += decay; if (r.state > 254) r.state = 0;
+    } else if (rnd(5100 + 10000) <= sp.ix) { r.state = 1; r.pos = rnd(L); r.color = rnd(256); }
+  }
+  blur1d(s, sp.c1 >> 1);
+});
+add(92, 'Sinelon@!,Trail;!,!,!;!', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return fill(s, sp.col[0]);
+  fadeOut(s, sp.ix);
+  const pos = beatsin16(Math.floor(sp.sx / 10), 0, L - 1, t); if (st.aux0 === undefined) st.aux0 = pos;
+  const c = cfp(s, pos, true); put(s, pos, c);
+  if (st.aux0 < pos) for (let i = st.aux0; i < pos; i++) put(s, i, c); else for (let i = st.aux0; i > pos; i--) put(s, i, c);
+  st.aux0 = pos;
+});
+
+/* ================= metadata (same format as WLED) ================= */
+function parseMeta(meta) {
+  const at = meta.indexOf('@'), name = at < 0 ? meta : meta.slice(0, at);
+  const keys = ['sx', 'ix', 'c1', 'c2', 'c3', 'o1', 'o2', 'o3'];
+  const defL = { sx: 'Effect speed', ix: 'Effect intensity', c1: 'Custom 1', c2: 'Custom 2', c3: 'Custom 3', o1: 'Option 1', o2: 'Option 2', o3: 'Option 3' };
+  const info = { name, ctl: [], colors: ['Fx', 'Bg', 'Cs'], pal: true, def: {} };
+  if (at < 0) { info.ctl = [{ k: 'sx', l: defL.sx }, { k: 'ix', l: defL.ix }]; return info; }
+  const parts = meta.slice(at + 1).split(';'), params = (parts[0] || '').split(',');
+  keys.forEach((k, i) => { const p = params[i]; if (p) info.ctl.push({ k, l: p === '!' ? defL[k] : p }); });
+  if (parts[1] !== undefined) { const cs = parts[1].split(','); info.colors = [0, 1, 2].map(i => !cs[i] ? null : cs[i] === '!' ? ['Fx', 'Bg', 'Cs'][i] : cs[i]); }
+  if (parts[2] !== undefined) info.pal = parts[2] !== '';
+  (parts[4] || '').split(',').forEach(d => { const m = d.match(/^(sx|ix|c1|c2|c3|o1|o2|o3|pal)=(\d+)$/); if (m) info.def[m[1]] = +m[2]; });
+  return info;
+}
+
+/* ================= model ================= */
+const SEGC = ['#ffb547', '#5ec8ff', '#b296ff', '#6be38a', '#ff8a9a', '#f2e05c', '#55e0d0', '#ff9f5e'];
+const strip = { count: 300, rgbw: false, bri: 160, perRow: 0, gamma: true };
+let segs = [];
+const runtime = new WeakMap();
+
+function applyDefaults(s) {
+  Object.assign(s, { sx: 128, ix: 128, c1: 128, c2: 128, c3: 16, o1: false, o2: false, o3: false });
+  const d = FX[s.fx].info.def; for (const k in d) { if (k === 'pal') s.pal = d[k]; else s[k] = k[0] === 'o' ? !!d[k] : d[k]; }
+}
+function newSeg(start, stop, fx = 85, opts = {}) {
+  const s = { id: 0, start, stop, on: true, bri: 255, fx, pal: 0, rev: false, col: [[255, 170, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
+  applyDefaults(s); Object.assign(s, opts);
+  if (opts.col) s.col = [0, 1, 2].map(i => { const c = opts.col[i] || [0, 0, 0, 0]; return [c[0] | 0, c[1] | 0, c[2] | 0, c[3] | 0]; });
+  return s;
+}
+function renumber() { segs.forEach((s, i) => { s.id = i; }); }
+function rtFor(s) {
+  const fx = FX[s.fx], shape = s.fx + '|' + s.start + '|' + s.stop + '|' + s.rev + '|' + s.on;
+  const sig = fx.once ? JSON.stringify([s.sx, s.ix, s.c1, s.c2, s.c3, s.o1, s.o2, s.o3, s.col, s.pal]) : '';
+  let r = runtime.get(s);
+  if (!r || r.shape !== shape || r.sig !== sig) { const L = Math.max(0, s.stop - s.start); r = { shape, sig, L, px: new Float32Array(L * 4), st: {}, t: 0, acc: 24, sp: s }; runtime.set(s, r); }
+  return r;
+}
+function restart(s) { runtime.delete(s); }
+
+/* ================= examples (generic) ================= */
+const EX = {
+  tour: { count: 300, rgbw: false, bri: 170, segs: [
+    [66, 0, 50, { pal: 35 }],
+    [40, 50, 100, { sx: 200, ix: 210, o1: true, col: [[255, 0, 0], [0, 0, 0], [0, 0, 0]] }],
+    [13, 100, 150, { sx: 160, ix: 0, col: [[255, 170, 60], [0, 0, 0]] }],
+    [67, 150, 200, { pal: 26 }],
+    [76, 200, 250, { sx: 140, ix: 128, col: [[255, 255, 255], [0, 0, 0]] }],
+    [79, 250, 300, { ix: 200 }]] },
+  fire: { count: 120, rgbw: false, bri: 200, segs: [[66, 0, 120, { pal: 35 }]] },
+  scanner: { count: 100, rgbw: false, bri: 200, segs: [[40, 0, 100, { sx: 220, ix: 220, o1: true, col: [[255, 0, 0], [0, 0, 0], [0, 0, 0]] }]] },
+  theater: { count: 150, rgbw: true, bri: 180, segs: [[13, 0, 150, { sx: 160, ix: 0, col: [[255, 160, 60, 0], [0, 0, 0, 0]] }]] },
+  waves: { count: 300, rgbw: false, bri: 170, segs: [[63, 0, 150, {}], [67, 150, 300, { pal: 26 }]] },
+  builtin: { count: 300, rgbw: true, bri: 150, segs: [[85, 0, 100, { sx: 196, ix: 128, col: [[251, 255, 242, 0]] }], [102, 100, 200, { col: [[255, 120, 20, 0]] }], [9, 200, 300, {}]] },
+};
+function loadExample(k) {
+  const e = EX[k]; if (!e) return;
+  Object.assign(strip, { count: e.count, rgbw: e.rgbw, bri: e.bri });
+  segs = e.segs.map(([fx, a, b, o]) => newSeg(a, b, fx, o)); renumber(); renderAll();
+}
+
+/* ================= stage ================= */
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), box = document.getElementById('stageBox');
+const gA = document.createElement('canvas'), gActx = gA.getContext('2d'), gB = document.createElement('canvas'), gBctx = gB.getContext('2d');
+let geo = null;
+function layout() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1), W = box.clientWidth || 600, pad = 16, avail = W - pad * 2, n = strip.count;
+  let perRow = strip.perRow > 0 ? Math.min(strip.perRow, n) : Math.min(n, Math.max(8, Math.floor(avail / 9)));
+  let pitch = Math.min(18, avail / perRow);
+  const rows = Math.ceil(n / perRow), band = 16, rowH = band + pitch + 12, H = pad * 2 + rows * rowH - 12;
+  const offX = pad + (avail - perRow * pitch) / 2;
+  cv.style.height = H + 'px'; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const fa = Math.max(2, Math.round(pitch * dpr * 0.6)), fb = fa * 3;
+  gA.width = Math.ceil(cv.width / fa); gA.height = Math.ceil(cv.height / fa); gB.width = Math.ceil(cv.width / fb); gB.height = Math.ceil(cv.height / fb);
+  geo = { dpr, W, H, pad, perRow, pitch, rows, band, rowH, offX, fa, fb };
+}
+const ledX = i => geo.offX + ((i % geo.perRow) + 0.5) * geo.pitch;
+const ledY = i => geo.pad + Math.floor(i / geo.perRow) * geo.rowH + geo.band + geo.pitch / 2;
+
+const N = () => strip.count;
+let frame = new Float32Array(0), lin = new Float32Array(0), css = [];
+function compose() {
+  const n = N(); if (frame.length !== n * 4) { frame = new Float32Array(n * 4); lin = new Float32Array(n * 3); css = new Array(n); }
+  frame.fill(0);
+  for (const s of segs) {
+    if (!s.on || s.stop <= s.start) continue; const r = rtFor(s), k = s.bri / 255;
+    for (let i = 0; i < r.L; i++) { const idx = s.start + (s.rev ? r.L - 1 - i : i); if (idx >= n) continue; const o = i * 4, q = idx * 4;
+      frame[q] = r.px[o] * k; frame[q + 1] = r.px[o + 1] * k; frame[q + 2] = r.px[o + 2] * k; frame[q + 3] = strip.rgbw ? r.px[o + 3] * k : 0; }
+  }
+  const b = strip.bri / 255, gm = v => strip.gamma ? GL[v >= 255 ? 255 : v <= 0 ? 0 : Math.round(v)] : v;
+  for (let i = 0; i < n; i++) { const q = i * 4, o = i * 3, w = gm(frame[q + 3]) * b / 255;
+    lin[o] = gm(frame[q]) * b / 255 + w; lin[o + 1] = gm(frame[q + 1]) * b / 255 + w * 0.93; lin[o + 2] = gm(frame[q + 2]) * b / 255 + w * 0.82; }
+}
+function draw() {
+  const g = geo, n = N(), d = g.dpr, e = 1 / 2.2;
+  for (let i = 0; i < n; i++) { const o = i * 3, r = lin[o], gg = lin[o + 1], bb = lin[o + 2], m = Math.max(r, gg, bb);
+    if (m < 0.0015) { css[i] = null; continue; } const hot = Math.min(0.45, Math.max(0, m - 0.6));
+    const R = Math.pow(Math.min(1, r), e), G = Math.pow(Math.min(1, gg), e), B = Math.pow(Math.min(1, bb), e);
+    css[i] = `rgb(${Math.round((R + (1 - R) * hot) * 255)},${Math.round((G + (1 - G) * hot) * 255)},${Math.round((B + (1 - B) * hot) * 255)})`; }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  ctx.fillStyle = '#05070b'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  // segment bands
+  ctx.font = '600 10.5px "JetBrains Mono", ui-monospace, monospace'; ctx.textBaseline = 'middle';
+  segs.forEach((s, si) => {
+    if (s.stop <= s.start) return; const col = SEGC[si % SEGC.length], a = Math.max(0, s.start), b = Math.min(n, s.stop); if (b <= a) return;
+    ctx.globalAlpha = s.on ? 0.95 : 0.35; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2;
+    for (let r = Math.floor(a / g.perRow); r <= Math.floor((b - 1) / g.perRow); r++) {
+      const i0 = Math.max(a, r * g.perRow), i1 = Math.min(b - 1, (r + 1) * g.perRow - 1), y = g.pad + r * g.rowH + 4;
+      const x0 = ledX(i0) - g.pitch / 2 + 1, x1 = ledX(i1) + g.pitch / 2 - 1;
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+      ctx.fillRect(x0, y - 3, 2, 7);
+      if (i0 === a) { const label = s.id + ' · ' + FX[s.fx].info.name; if (x1 - x0 > 40) { ctx.save(); ctx.beginPath(); ctx.rect(x0, y + 2, x1 - x0, 12); ctx.clip(); ctx.fillText(label, x0 + 5, y + 8); ctx.restore(); } }
+    }
+  });
+  ctx.globalAlpha = 1;
+  // LED bodies
+  ctx.fillStyle = '#1b212b'; const rr = Math.max(0.8, g.pitch * 0.3);
+  for (let i = 0; i < n; i++) if (!css[i]) { ctx.beginPath(); ctx.arc(ledX(i), ledY(i), rr, 0, 6.283); ctx.fill(); }
+  // glow
+  glow(gA, gActx, g.fa, 1.0); glow(gB, gBctx, g.fb, 0.85);
+  ctx.setTransform(d, 0, 0, d, 0, 0); ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < n; i++) if (css[i]) { ctx.fillStyle = css[i]; ctx.beginPath(); ctx.arc(ledX(i), ledY(i), rr * 1.05, 0, 6.283); ctx.fill(); }
+  ctx.globalCompositeOperation = 'source-over';
+}
+function glow(c, cc, f, strength) {
+  const g = geo, n = N(), k = g.dpr / f;
+  cc.setTransform(1, 0, 0, 1, 0, 0); cc.globalCompositeOperation = 'source-over'; cc.clearRect(0, 0, c.width, c.height); cc.globalCompositeOperation = 'lighter';
+  const a = Math.min(1, g.pitch * k);
+  for (let i = 0; i < n; i++) if (css[i]) { const o = i * 3; cc.globalAlpha = a * Math.min(1, 0.35 + Math.max(lin[o], lin[o + 1], lin[o + 2])); cc.fillStyle = css[i]; cc.fillRect(ledX(i) * k - 0.5, ledY(i) * k - 0.5, 1, 1); }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = strength; ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(c, 0, 0, c.width, c.height, 0, 0, c.width * f, c.height * f); ctx.globalAlpha = 1;
+}
+
+/* ================= loop ================= */
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min(100, now - last); last = now;
+  for (const s of segs) { if (!s.on || s.stop <= s.start) continue; const r = rtFor(s); r.acc += dt; let n = 0;
+    while (r.acc >= 24 && n < 5) { FX[s.fx].f(r, r.t); r.t += 24; r.acc -= 24; n++; } if (n >= 5) r.acc = 0; }
+  compose(); draw(); requestAnimationFrame(tick);
+}
+
+/* ================= UI ================= */
+const $ = id => document.getElementById(id);
+const hex = c => '#' + [0, 1, 2].map(i => Math.max(0, Math.min(255, c[i] | 0)).toString(16).padStart(2, '0')).join('');
+const unhex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+function el(tag, attrs = {}, kids = []) { const e = document.createElement(tag); for (const k in attrs) { if (k === 'text') e.textContent = attrs[k]; else if (k === 'class') e.className = attrs[k]; else e.setAttribute(k, attrs[k]); } kids.forEach(x => x && e.appendChild(x)); return e; }
+
+function fxOptions(sel, cur) {
+  const sorted = Object.keys(FX).sort((a, b) => FX[a].info.name.localeCompare(FX[b].info.name));
+  for (const k of sorted) { const f = FX[k]; const o = el('option', { value: String(k), text: f.info.name + (f.approx ? ' (≈)' : '') + ' · ' + k }); if (String(k) === String(cur)) o.selected = true; sel.appendChild(o); }
+}
+const fxKey = v => (/^\d+$/.test(v) ? +v : v);
+
+function sliderRow(label, val, max, onInput, id) {
+  const inp = el('input', { type: 'range', min: '0', max: String(max), id }); inp.value = val;
+  const out = el('output', { for: id, text: String(val) });
+  inp.addEventListener('input', () => { out.textContent = inp.value; onInput(+inp.value); });
+  return el('div', { class: 'slider' }, [el('span', { class: 'lbl', text: label }), inp, out]);
+}
+
+function segCard(s, si) {
+  const info = FX[s.fx].info, card = el('section', { class: 'seg' + (s.on ? '' : ' off'), 'aria-label': 'Segment ' + s.id });
+  card.style.setProperty('--segc', SEGC[si % SEGC.length]);
+  const sel = el('select', { id: 'fx-' + si, 'aria-label': t('effect') }); fxOptions(sel, s.fx);
+  sel.addEventListener('change', () => { s.fx = fxKey(sel.value); applyDefaults(s); restart(s); renderAll(); });
+  const onBox = el('input', { type: 'checkbox', id: 'on-' + si }); onBox.checked = s.on; onBox.addEventListener('change', () => { s.on = onBox.checked; card.classList.toggle('off', !s.on); updateOut(); drawMeta(); });
+  const del = el('button', { class: 'btn small ghost', type: 'button', text: t('remove') }); del.addEventListener('click', () => { segs.splice(si, 1); renumber(); renderAll(); });
+  const rep = el('button', { class: 'btn small', type: 'button', text: t('replay') }); rep.addEventListener('click', () => restart(s));
+  const head = el('div', { class: 'seg-head' }, [el('span', { class: 'seg-title', text: 'Segment ' + s.id }), el('span', { class: 'seg-range', text: s.start + '–' + s.stop + ' · ' + Math.max(0, s.stop - s.start) + ' ' + t('ledsShort') }), el('span', { class: 'grow' }), sel,
+    el('label', { class: 'check' }, [onBox, el('span', { text: t('on') })]), rep, del]);
+  card.appendChild(head);
+
+  const num = (key, min) => { const inp = el('input', { type: 'number', id: key + '-' + si, min: String(min), max: String(strip.count), step: '1' }); inp.value = s[key];
+    inp.addEventListener('change', () => { let v = Math.round(+inp.value); if (!isFinite(v)) v = s[key]; v = Math.max(0, Math.min(strip.count, v));
+      if (key === 'start' && v >= s.stop) v = s.stop - 1; if (key === 'stop' && v <= s.start) v = s.start + 1; s[key] = v; renderAll(); });
+    return el('div', { class: 'field' }, [el('span', { class: 'lbl', text: t(key) }), inp]); };
+  const rev = el('input', { type: 'checkbox', id: 'rev-' + si }); rev.checked = s.rev; rev.addEventListener('change', () => { s.rev = rev.checked; updateOut(); });
+  const geom = el('div', { class: 'row' }, [num('start', 0), num('stop', 1), el('label', { class: 'check', style: 'margin-top:16px' }, [rev, el('span', { text: t('reverse') })])]);
+  card.appendChild(geom);
+  const over = segs.findIndex((o, j) => j !== si && o.start < s.stop && s.start < o.stop);
+  if (over >= 0) card.appendChild(el('p', { class: 'warn', text: t('overlap', { n: over }) }));
+
+  const g2 = el('div', { class: 'grid2' });
+  g2.appendChild(sliderRow(t('segBri'), s.bri, 255, v => { s.bri = v; updateOut(); }, 'bri-' + si));
+  const checks = [];
+  info.ctl.forEach(c => {
+    if (c.k[0] === 'o') { const b = el('input', { type: 'checkbox', id: c.k + '-' + si }); b.checked = !!s[c.k]; b.addEventListener('change', () => { s[c.k] = b.checked; updateOut(); }); checks.push(el('label', { class: 'check' }, [b, el('span', { text: c.l })])); }
+    else g2.appendChild(sliderRow(c.l, s[c.k], c.k === 'c3' ? 31 : 255, v => { s[c.k] = v; updateOut(); }, c.k + '-' + si));
+  });
+  card.appendChild(g2);
+  if (checks.length) card.appendChild(el('div', { class: 'row' }, checks));
+
+  const colors = el('div', { class: 'colors' });
+  info.colors.forEach((name, ci) => { if (!name) return;
+    const pick = el('input', { type: 'color', id: 'col-' + si + '-' + ci, 'aria-label': name }); pick.value = hex(s.col[ci]);
+    pick.addEventListener('input', () => { const [r, g, b] = unhex(pick.value); s.col[ci] = [r, g, b, s.col[ci][3] | 0]; updateOut(); });
+    const kids = [pick, el('span', { text: name })];
+    if (strip.rgbw) { const w = el('input', { type: 'number', min: '0', max: '255', id: 'w-' + si + '-' + ci, 'aria-label': name + ' W' }); w.value = s.col[ci][3] | 0;
+      w.addEventListener('change', () => { s.col[ci][3] = Math.max(0, Math.min(255, Math.round(+w.value) || 0)); updateOut(); }); kids.push(el('span', { class: 'lbl', text: t('white') }), w); }
+    colors.appendChild(el('div', { class: 'color' }, kids)); });
+  if (info.pal) { const ps = el('select', { id: 'pal-' + si, 'aria-label': t('palette') }); for (const p of PAL_IDS) { const o = el('option', { value: String(p), text: PAL_NAMES[p] + (p ? ' · ' + p : '') }); if (p === s.pal) o.selected = true; ps.appendChild(o); }
+    ps.addEventListener('change', () => { s.pal = +ps.value; updateOut(); }); colors.appendChild(el('div', { class: 'color' }, [el('span', { class: 'lbl', text: t('palette') }), ps])); }
+  if (colors.childNodes.length) card.appendChild(colors);
+  return card;
+}
+
+function renderSegs() {
+  const host = $('segs'); host.innerHTML = '';
+  if (!segs.length) host.appendChild(el('p', { class: 'empty', text: t('noSegs') }));
+  segs.forEach((s, i) => host.appendChild(segCard(s, i)));
+}
+function drawMeta() { $('meta').innerHTML = ''; $('meta').appendChild(el('span', { text: t('meta', { c: strip.count, s: segs.length, r: geo ? geo.rows : 1 }) })); }
+
+function segJson(s) {
+  const o = { id: s.id, start: s.start, stop: s.stop, on: s.on, bri: s.bri, fx: s.fx, sx: s.sx, ix: s.ix };
+  const ctl = FX[s.fx].info.ctl.map(c => c.k);
+  for (const k of ['c1', 'c2', 'c3']) if (ctl.includes(k)) o[k] = s[k];
+  for (const k of ['o1', 'o2', 'o3']) if (ctl.includes(k)) o[k] = !!s[k];
+  o.pal = s.pal; o.col = s.col.map(c => strip.rgbw ? [c[0], c[1], c[2], c[3] | 0] : [c[0], c[1], c[2]]); o.rev = s.rev;
+  return o;
+}
+function updateOut() {
+  const lines = ['{', `  "on": true,`, `  "bri": ${strip.bri},`, '  "seg": ['];
+  segs.forEach((s, i) => lines.push('    ' + JSON.stringify(segJson(s)) + (i < segs.length - 1 ? ',' : '')));
+  lines.push('  ]', '}'); $('out').textContent = lines.join('\n'); $('copyMsg').hidden = true;
+}
+
+function renderStrip() {
+  $('count').value = strip.count; $('rgbw').value = strip.rgbw ? '1' : '0'; $('perRow').value = strip.perRow; $('bri').value = strip.bri; $('briOut').textContent = strip.bri; $('gamma').checked = strip.gamma;
+}
+function renderAll() { renderStrip(); layout(); renderSegs(); updateOut(); drawMeta(); }
+
+function applyTexts() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(e => { e.textContent = t(e.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-html]').forEach(e => { e.innerHTML = t(e.dataset.i18nHtml); });
+  $('lang').textContent = t('langBtn');
+  const ex = $('examples'); ex.innerHTML = ''; ex.appendChild(el('option', { value: '', text: t('ex').pick }));
+  for (const k in EX) ex.appendChild(el('option', { value: k, text: t('ex')[k] }));
+}
+
+/* ---- import ---- */
+function parseCol(c) {
+  if (Array.isArray(c)) return [c[0] | 0, c[1] | 0, c[2] | 0, c[3] | 0];
+  if (typeof c === 'string') { const h = c.replace('#', ''); if (h.length === 8) return [parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), parseInt(h.slice(6, 8), 16), parseInt(h.slice(0, 2), 16)];
+    if (h.length === 6) return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), 0]; }
+  return [0, 0, 0, 0];
+}
+function doImport() {
+  const msg = $('inMsg'); msg.hidden = false; msg.className = 'msg';
+  let o; try { o = JSON.parse($('in').value); } catch (e) { msg.textContent = t('importErr', { m: e.message }); msg.className = 'msg err'; return; }
+  const st = o.state || o, info = o.info || {};
+  const raw = (Array.isArray(st.seg) ? st.seg : st.seg ? [st.seg] : []).filter(x => (x.stop ?? 0) > (x.start ?? 0));
+  if (!raw.length) { msg.textContent = t('noSegIn'); msg.className = 'msg err'; return; }
+  const unknown = [], unknownPal = [];
+  if (typeof st.bri === 'number') strip.bri = st.bri;
+  strip.count = (info.leds && info.leds.count) || Math.max(...raw.map(x => x.stop));
+  if (info.leds && typeof info.leds.rgbw === 'boolean') strip.rgbw = info.leds.rgbw; else strip.rgbw = raw.some(x => (x.col || []).some(c => Array.isArray(c) && c.length > 3 && c[3] > 0));
+  segs = raw.map(x => {
+    let fx = x.fx ?? 0;
+    if (typeof fx === 'string') { const hit = Object.keys(FX).find(k => FX[k].info.name.toLowerCase() === fx.toLowerCase()); fx = hit !== undefined ? fxKey(hit) : (unknown.push(fx), 0); }
+    else if (!FX[fx]) { unknown.push(fx); fx = 0; }
+    const s = newSeg(x.start | 0, x.stop | 0, fx);
+    for (const k of ['sx', 'ix', 'c1', 'c2', 'c3', 'bri', 'pal']) if (typeof x[k] === 'number') s[k] = x[k];
+    for (const k of ['o1', 'o2', 'o3', 'on', 'rev']) if (typeof x[k] === 'boolean') s[k] = x[k];
+    if (Array.isArray(x.col)) s.col = [0, 1, 2].map(i => x.col[i] !== undefined ? parseCol(x.col[i]) : [0, 0, 0, 0]);
+    if (!PAL_IDS.includes(s.pal)) { unknownPal.push(s.pal); s.pal = 0; }
+    return s;
+  });
+  renumber(); renderAll();
+  msg.textContent = t('importOk', { n: segs.length }) + (unknown.length ? ' ' + t('unknownFx', { l: [...new Set(unknown)].join(', ') }) : '')
+    + (unknownPal.length ? ' ' + t('unknownPal', { l: [...new Set(unknownPal)].join(', ') }) : '');
+}
+
+/* ---- wiring ---- */
+$('count').addEventListener('change', () => { strip.count = Math.max(1, Math.min(1500, Math.round(+$('count').value) || 1));
+  segs.forEach(s => { s.stop = Math.min(s.stop, strip.count); s.start = Math.min(s.start, s.stop - 1); }); segs = segs.filter(s => s.stop > s.start); renumber(); renderAll(); });
+$('rgbw').addEventListener('change', () => { strip.rgbw = $('rgbw').value === '1'; renderAll(); });
+$('perRow').addEventListener('change', () => { strip.perRow = Math.max(0, Math.round(+$('perRow').value) || 0); layout(); drawMeta(); });
+$('bri').addEventListener('input', () => { strip.bri = +$('bri').value; $('briOut').textContent = strip.bri; updateOut(); });
+$('gamma').addEventListener('change', () => { strip.gamma = $('gamma').checked; });
+$('examples').addEventListener('change', () => { if ($('examples').value) loadExample($('examples').value); $('examples').value = ''; });
+$('splitBtn').addEventListener('click', () => {
+  const n = Math.max(1, Math.min(32, Math.round(+$('splitN').value) || 1)), keep = segs.slice(); segs = [];
+  for (let i = 0; i < n; i++) { const a = Math.floor(i * strip.count / n), b = Math.floor((i + 1) * strip.count / n); if (b <= a) continue;
+    const src = keep[i]; segs.push(src ? Object.assign(newSeg(a, b, src.fx), { sx: src.sx, ix: src.ix, c1: src.c1, c2: src.c2, c3: src.c3, o1: src.o1, o2: src.o2, o3: src.o3, pal: src.pal, col: src.col.map(c => c.slice()), bri: src.bri, rev: src.rev }) : newSeg(a, b, 85, { col: [[255, 170, 0, 0]] })); }
+  renumber(); renderAll(); });
+$('addSeg').addEventListener('click', () => {
+  const end = segs.reduce((m, s) => Math.max(m, s.stop), 0), a = end < strip.count ? end : Math.max(0, strip.count - Math.max(1, Math.floor(strip.count / 4)));
+  segs.push(newSeg(a, strip.count, 85)); renumber(); renderAll(); });
+$('restart').addEventListener('click', () => segs.forEach(restart));
+$('apply').addEventListener('click', doImport);
+$('copy').addEventListener('click', () => {
+  const pre = $('out'), msg = $('copyMsg');
+  const fallback = () => { const r = document.createRange(); r.selectNodeContents(pre); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); msg.textContent = t('selected'); msg.hidden = false; };
+  try { navigator.clipboard.writeText(pre.textContent).then(() => { msg.textContent = t('copied'); msg.hidden = false; }, fallback); } catch (e) { fallback(); }
+});
+$('lang').addEventListener('click', () => { lang = lang === 'de' ? 'en' : 'de'; try { localStorage.setItem('wss-lang', lang); } catch (e) { /* no storage */ } applyTexts(); renderAll(); });
+let lastW = 0;
+new ResizeObserver(() => { const w = box.clientWidth; if (w === lastW) return; lastW = w; layout(); drawMeta(); }).observe(box);
+
+applyTexts(); loadExample('tour');
+requestAnimationFrame(x => { last = x; requestAnimationFrame(tick); });
+})();
+</script>
+</body>
+</html>
