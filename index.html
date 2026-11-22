@@ -194,7 +194,7 @@ const T = {
     builtin: 'WLED effects', approx: 'approx.', ledsShort: 'LEDs', meta: '{c} LEDs · {s} segments · {r} rows',
     langBtn: 'Deutsch', white: 'W',
     foot: 'The effects are re-written in JavaScript after the WLED 16 source code. Rain, Twinklefox and the two fireworks (≈) are approximations, and effects with random parts never repeat exactly. Colours on a screen are an impression, real LEDs are brighter and more saturated. An independent project, not part of WLED.',
-    ex: { tour: 'A tour: six effects', fire: 'Fire 2012 with the Fire palette', scanner: 'Scanner with two dots', theater: 'Theater lights, warm white', waves: 'Pride 2015 and Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', m_hole: '2D: Black Hole, 16 × 16', m_rain: '2D: Matrix rain, 32 × 16', m_mix: '2D: Octopus and Plasma Ball', m_fire: '2D: Fire 2012 rising (1D effect as Bar)', m_noise: '2D: Noise2D with the Ocean palette', pick: 'Choose an example…' },
+    ex: { tour: 'A tour: six effects', fire: 'Fire 2012 with the Fire palette', scanner: 'Scanner with two dots', theater: 'Theater lights, warm white', waves: 'Pride 2015 and Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', pacifica: 'Pacifica, ocean waves', aurora: 'Aurora', balls: 'Bouncing Balls and Popcorn', m_hole: '2D: Black Hole, 16 × 16', m_life: '2D: Game of Life', m_polar: '2D: Polar Lights', m_rain: '2D: Matrix rain, 32 × 16', m_mix: '2D: Octopus and Plasma Ball', m_fire: '2D: Fire 2012 rising (1D effect as Bar)', m_noise: '2D: Noise2D with the Ocean palette', pick: 'Choose an example…' },
   },
   de: {
     title: 'LED-Streifen-<em>Simulator</em>',
@@ -215,7 +215,7 @@ const T = {
     builtin: 'WLED-Effekte', approx: 'angenähert', ledsShort: 'LEDs', meta: '{c} LEDs · {s} Segmente · {r} Reihen',
     langBtn: 'English', white: 'W',
     foot: 'Die Effekte sind nach dem Quelltext von WLED 16 in JavaScript nachgebaut. Rain, Twinklefox und die beiden Feuerwerke (≈) sind angenähert, und Effekte mit Zufall wiederholen sich nie genau. Farben auf dem Bildschirm sind ein Eindruck, echte LEDs sind heller und satter. Ein unabhängiges Projekt, kein Teil von WLED.',
-    ex: { tour: 'Rundgang: sechs Effekte', fire: 'Fire 2012 mit der Fire-Palette', scanner: 'Scanner mit zwei Punkten', theater: 'Lauflicht, warmweiß', waves: 'Pride 2015 und Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', m_hole: '2D: Black Hole, 16 × 16', m_rain: '2D: Matrix-Regen, 32 × 16', m_mix: '2D: Octopus und Plasma Ball', m_fire: '2D: Fire 2012 steigt auf (1D-Effekt als Bar)', m_noise: '2D: Noise2D mit Ocean-Palette', pick: 'Beispiel wählen …' },
+    ex: { tour: 'Rundgang: sechs Effekte', fire: 'Fire 2012 mit der Fire-Palette', scanner: 'Scanner mit zwei Punkten', theater: 'Lauflicht, warmweiß', waves: 'Pride 2015 und Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', pacifica: 'Pacifica, Meereswellen', aurora: 'Aurora (Polarlicht)', balls: 'Bouncing Balls und Popcorn', m_hole: '2D: Black Hole, 16 × 16', m_life: '2D: Game of Life', m_polar: '2D: Polar Lights', m_rain: '2D: Matrix-Regen, 32 × 16', m_mix: '2D: Octopus und Plasma Ball', m_fire: '2D: Fire 2012 steigt auf (1D-Effekt als Bar)', m_noise: '2D: Noise2D mit Ocean-Palette', pick: 'Beispiel wählen …' },
   },
 };
 let lang = 'en';
@@ -226,10 +226,15 @@ const t = (k, v) => { let s = T[lang][k] ?? T.en[k] ?? k; if (v) for (const x in
 const BLACK = [0, 0, 0, 0];
 const GL = new Float32Array(256); for (let i = 0; i < 256; i++) GL[i] = Math.pow(i / 255, 2.8) * 255;
 const rnd = n => n > 0 ? Math.floor(Math.random() * n) : 0;
-const mix = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, (a[3] || 0) + ((b[3] || 0) - (a[3] || 0)) * k];
+// color_blend(a, b, amount) with amount = round(k * 255): (c1 * (256 - b) + c2 * (b + 1)) >> 8 per channel
+const mix = (a, b, k) => { const bl = Math.max(0, Math.min(255, Math.round(k * 255))), k1 = 256 - bl, k2 = bl + 1;
+  return [0, 1, 2, 3].map(i => (Math.round(a[i] || 0) * k1 + Math.round(b[i] || 0) * k2) >> 8); };
 const isBlack = c => !c[0] && !c[1] && !c[2] && !c[3];
 const scale8 = (i, s) => (Math.floor(i) * (1 + Math.floor(s))) >> 8;
-const fadeC = (c, a) => { const k = (a + 1) / 256; return c.map(v => v ? Math.max(1, v * k) : 0); };
+// color_fade(c, amount, true): "video" fade, channels at or above half of the brightest keep one extra step
+const fadeC = (c, a) => { const r = Math.round(c[0]) | 0, g = Math.round(c[1]) | 0, b = Math.round(c[2]) | 0, w = Math.round(c[3] || 0) | 0; a = Math.round(a) & 255;
+  if (!r && !g && !b && !w) return [0, 0, 0, 0]; if (a === 255) return [r, g, b, w]; if (a === 0) return [0, 0, 0, 0];
+  const thr = (Math.max(r, g, b) >> 1) + 1, f = v => ((v * a) >> 8) + (v >= thr ? 1 : 0); return [f(r), f(g), f(b), f(w)]; };
 const tri8 = x => x < 128 ? x << 1 : 255 - ((x - 128) << 1);
 const sin8 = x => Math.round(128 + 127 * Math.sin(x / 256 * 2 * Math.PI));
 const cos8 = x => Math.round(128 + 127 * Math.cos(x / 256 * 2 * Math.PI));
@@ -256,9 +261,8 @@ const GRAD = {
 };
 function fillGradient(e, a, ca, b, cb) {
   if (b < a) { [a, b] = [b, a]; [ca, cb] = [cb, ca]; }
-  const n = b - a, div = n || 1, d = [0, 1, 2].map(k => Math.trunc(((cb[k] - ca[k]) << 7) / div) * 2);
-  const acc = [0, 1, 2].map(k => ca[k] << 8);
-  for (let i = a; i <= b; i++) { e[i] = [acc[0] >> 8, acc[1] >> 8, acc[2] >> 8, 0]; for (let k = 0; k < 3; k++) acc[k] += d[k]; }
+  const div = (b - a) || 1, d = [0, 1, 2].map(k => Math.trunc((cb[k] - ca[k]) * 65536 / div)), acc = [0, 1, 2].map(k => ca[k] * 65536);
+  for (let i = a; i <= b; i++) { e[i] = [acc[0] >> 16, acc[1] >> 16, acc[2] >> 16, 0]; for (let k = 0; k < 3; k++) acc[k] += d[k]; }
 }
 function gradTo16(g) {
   const e = new Array(16).fill(null).map(() => [0, 0, 0, 0]), count = g.length / 4;
@@ -283,22 +287,23 @@ function pal16(sp, id) {
 }
 // FastLED ColorFromPalette; blend: 0 none, 1 linear with wrap, 2 linear without wrap
 function cfpal(p, idx, bri = 255, blend = 2) {
-  idx = Math.floor(idx) & 255; if (blend === 2) idx = scale8(idx, 239);
-  const hi = idx >> 4, lo = idx & 15, a = p[hi]; let c = a;
-  if (lo && blend) { const b = p[hi === 15 ? 0 : hi + 1], f = lo / 16; c = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, 0]; }
-  return bri === 255 ? c : c.map(v => v * (bri + 1) / 256);
+  let index = Math.floor(idx) >>> 0; if (blend === 2) index = (Math.imul(index, 0xF0) >>> 0) >>> 8;
+  const hi = (index & 255) >> 4, lo = index & 15, e = p[hi]; let r = e[0] | 0, g = e[1] | 0, b = e[2] | 0;
+  if (lo && blend) { const n = p[hi === 15 ? 0 : hi + 1], f2 = lo << 4, f1 = 256 - f2; r = (r * f1 + (n[0] | 0) * f2) >> 8; g = (g * f1 + (n[1] | 0) * f2) >> 8; b = (b * f1 + (n[2] | 0) * f2) >> 8; }
+  bri = Math.round(bri) & 255; if (bri < 255) { const k = bri + 1; r = (r * k) >> 8; g = (g * k) >> 8; b = (b * k) >> 8; }
+  return [r, g, b, 0];
 }
 // Segment::color_from_palette: palette 0 with mcol 0..2 returns the segment colour, mcol 255 uses the default palette
 function cfp(s, i, mapping, mcol = 0, pbri = 255, moving = false) {
-  const sp = s.sp;
-  if (!sp.pal && mcol < 3) return pbri === 255 ? sp.col[mcol] : fadeC(sp.col[mcol], pbri);
-  const idx = mapping ? Math.min(Math.floor(i * 255 / s.L), 255) : i;
-  return cfpal(pal16(sp, sp.pal || defPal(sp)), idx, pbri, moving ? 1 : 2);
+  const sp = s.sp, col = sp.col[mcol < 3 ? mcol : 0];
+  if (!sp.pal && mcol < 3) return fadeC(col, pbri);
+  let idx = Math.floor(i) & 0xFFFF; if (mapping) idx = Math.min(Math.floor(idx * 255 / s.L), 255);
+  const c = cfpal(pal16(sp, sp.pal || defPal(sp)), idx, pbri, moving ? 1 : 2); c[3] = col[3] | 0; return c;   // palette colours keep W of the segment colour
 }
 function palColor(sp, idx, moving) { if (!sp.pal) return sp.col[0]; return cfpal(pal16(sp, sp.pal), idx, 255, moving ? 1 : 2); }
 const colAt = (s, i) => cfp(s, i, true);                         // color_from_palette(i, mapping)
 // Segment::color_wheel: palette if one is set, otherwise FastLED's rainbow HSV
-const wheel = (sp, pos) => sp.pal ? cfpal(pal16(sp, sp.pal), pos, 255, 1) : hsvRainbow(pos & 255, 255, 255);
+const wheel = (sp, pos) => { const c = sp.pal ? cfpal(pal16(sp, sp.pal), pos & 255, 255, 1) : hsvRainbow(pos & 255, 255, 255); c[3] = sp.col[0][3] | 0; return c; };
 
 /* ================= WLED / FastLED maths ================= */
 // sin16_t from wled_math.cpp (Bhaskara approximation)
@@ -360,24 +365,27 @@ function fadeOut(s, rate) {
     if (d === 0 && c2 !== c1) d = c2 > c1 ? 1 : -1; p[o] = c1 + d;
   }
 }
-// Segment::blur (1D)
-function blur1d(s, amt) {
-  if (!amt) return; const keep = 255 - amt, seep = amt >> 1, sc = (c, a) => c.map(v => v * (a + 1) / 256), add = (a, b) => a.map((v, k) => Math.min(255, v + b[k]));
-  let carry = null, lastnew = null, curnew = BLACK;
-  for (let i = 0; i < s.L; i++) {
-    const cur = getPx(s, i), part = sc(cur, seep); curnew = sc(cur, keep);
-    if (i > 0) { if (carry) curnew = add(curnew, carry); put(s, i - 1, add(lastnew, part)); } else put(s, i, curnew);
-    lastnew = curnew; carry = part;
+// one blur pass along n pixels for m lines (fast_color_scale + color_add with its bit leak, like FX_fcn.cpp)
+function blurPass(s, amt, smear, n, m, at) {
+  amt &= 255; if (!amt) return; const p = s.px, keep = smear ? 255 : 255 - amt, seep = amt >> 1;
+  const sc = (o, k) => [(p[o] * k) >> 8, (p[o + 1] * k) >> 8, (p[o + 2] * k) >> 8, (p[o + 3] * k) >> 8];
+  const set = (o, c) => { p[o] = c[0]; p[o + 1] = c[1]; p[o + 2] = c[2]; p[o + 3] = c[3]; };
+  for (let l = 0; l < m; l++) {
+    let o = at(0, l) * 4, carry = sc(o, seep); set(o, sc(o, keep));
+    for (let a = 1; a < n; a++) {
+      const q = at(a, l) * 4, part = sc(q, seep), cur = colorAdd(sc(q, keep), carry, false);
+      set(o, colorAdd([p[o], p[o + 1], p[o + 2], p[o + 3]], part, false)); set(q, cur); carry = part; o = q;
+    }
   }
-  put(s, s.L - 1, curnew);
 }
+function blur1d(s, amt, smear = false) { blurPass(s, amt, smear, s.L, 1, a => a); }
 
 /* ================= effects ================= */
 const FX = {};
 const add = (key, meta, f, extra = {}) => { FX[key] = Object.assign({ key, meta, f, info: parseMeta(meta) }, extra); };
 
 /* ---- WLED effects (numbers as in WLED 16) ---- */
-add(0, 'Solid@;!;', s => fill(s, colAt(s, 0)));
+add(0, 'Solid@;!;', s => fill(s, s.sp.col[0]));   // mode_static: SEGMENT.fill(SEGCOLOR(0))
 add(1, 'Blink@!,Duty cycle;!,!;!;01', (s, t) => {
   const sp = s.sp, cyc = (255 - sp.sx) * 20 + 48, onTime = 24 + ((cyc - 48) * sp.ix >> 8), it = Math.floor(t / cyc);
   const on = it !== s.st.it || (t % cyc) <= onTime; s.st.it = it;
@@ -486,18 +494,6 @@ add(98, 'Percent@!,% of fill,,,,One color;!,!;!', s => {
   if (st.a1 === undefined) st.a1 = 0;
   for (let i = 0; i < L; i++) { const lit = pct <= 100 ? i < st.a1 : i >= L - st.a1; put(s, i, lit ? (sp.o1 ? palColor(sp, Math.floor(Math.min(pct, 100) * 255 / 100)) : colAt(s, i)) : sp.col[1]); }
   if (active > st.a1) st.a1 = Math.min(active, st.a1 + size); else if (active < st.a1) { st.a1 = st.a1 > size ? st.a1 - size : 0; if (st.a1 < active) st.a1 = active; }
-});
-add(102, 'Candle Multi@!,!;!,!;!;;sx=96,ix=224,pal=0', s => {
-  const sp = s.sp, L = s.L, st = s.st;
-  if (!st.v) { st.v = new Uint8Array(L).fill(160); st.tg = new Uint8Array(L).fill(170); st.fs = new Uint8Array(L).fill(1); st.up = new Uint8Array(L).fill(1); }
-  const valrange = sp.ix, rndval = valrange >> 1, sf = sp.sx > 252 ? 1 : sp.sx > 99 ? 2 : sp.sx > 49 ? 3 : 4;
-  for (let i = 0; i < L; i++) {
-    let v = st.v[i], tg = st.tg[i], fs = st.fs[i], up = st.up[i], nt = false;
-    if (up) { if (v + fs <= tg) v += fs; else nt = true; } else { if (v - fs >= tg) v -= fs; else nt = true; }
-    if (nt) { tg = rnd(rndval) + rnd(rndval); if (tg < (rndval >> 1)) tg = (rndval >> 1) + rnd(rndval); tg = Math.min(255, tg + (255 - valrange)); fs = Math.abs(tg - v) >> sf; if (fs === 0) fs = 1; up = tg > v ? 1 : 0; }
-    st.v[i] = v; st.tg[i] = tg; st.fs[i] = fs; st.up[i] = up;
-    put(s, i, mix(sp.col[1], colAt(s, i), v / 255));
-  }
 });
 
 add(10, 'Scan@!,# of dots,,,,,Overlay;!,!,!;!', (s, t) => scan(s, t, false));
@@ -733,29 +729,18 @@ const curPal = s => pal16(s.sp, s.sp.pal || defPal(s.sp));    // SEGPALETTE
 function putXY(s, x, y, c) { if (x < 0 || y < 0 || x >= s.W || y >= s.H) return; put(s, y * s.W + x, c); }
 // color_add: saturating, or keeping the colour ratio (addPixelColorXY default)
 function colorAdd(a, b, keepRatio) {
-  const c = [a[0] + b[0], a[1] + b[1], a[2] + b[2], (a[3] || 0) + (b[3] || 0)], m = Math.max(c[0], c[1], c[2], c[3]);
-  if (m <= 255) return c; if (!keepRatio) return c.map(v => Math.min(255, v));
-  const k = Math.floor((255 << 8) / m); return c.map(v => (v * k) >> 8);
+  const A = [0, 1, 2, 3].map(i => Math.round(a[i] || 0)), B = [0, 1, 2, 3].map(i => Math.round(b[i] || 0));
+  if (!(A[0] | A[1] | A[2] | A[3])) return B; if (!(B[0] | B[1] | B[2] | B[3])) return A;
+  let x = A[0] + B[0], y = A[1] + B[1], z = A[2] + B[2], u = A[3] + B[3];
+  if (keepRatio) { const m = Math.max(x, y, z, u); if (m <= 255) return [x, y, z, u]; const k = Math.floor((255 << 8) / m); return [(x * k) >> 8, (y * k) >> 8, (z * k) >> 8, (u * k) >> 8]; }
+  if (x > 255) x |= 255; if (y > 255) y |= 255; if (z > 255) z |= 255; if (u > 255) u |= 255;
+  return [(x & 255) | (y >> 8), (y & 255) | (z >> 8), z & 255, (u & 255) | (x >> 8)];
 }
 function addXY(s, x, y, c, keepRatio = true) { if (x < 0 || y < 0 || x >= s.W || y >= s.H) return; const i = y * s.W + x; put(s, i, colorAdd(getPx(s, i), c, keepRatio)); }
 // Segment::fadeToBlackBy: fast_color_scale(c, 255 - by)
 function fadeToBlackBy(s, by) { if (!by) return; const k = 255 - (by & 255), p = s.px; for (let i = 0; i < p.length; i++) p[i] = (Math.round(p[i]) * k) >> 8; }
 // Segment::blur2D
-function blur2d(s, bx, by, smear) {
-  const W = s.W, H = s.H, sc = (c, k) => c.map(v => (Math.round(v) * k) >> 8);
-  const pass = (n, m, at, amt) => {
-    if (!amt) return; const keep = smear ? 255 : 255 - amt, seep = amt >> 1;
-    for (let a = 0; a < m; a++) {
-      let cur = getPx(s, at(0, a)), carry = sc(cur, seep); put(s, at(0, a), sc(cur, keep));
-      for (let b = 1; b < n; b++) {
-        cur = getPx(s, at(b, a)); const part = sc(cur, seep); cur = colorAdd(sc(cur, keep), carry, false);
-        put(s, at(b - 1, a), colorAdd(getPx(s, at(b - 1, a)), part, false)); put(s, at(b, a), cur); carry = part;
-      }
-    }
-  };
-  pass(W, H, (x, y) => y * W + x, bx & 255);       // rows
-  pass(H, W, (y, x) => y * W + x, by & 255);       // columns
-}
+function blur2d(s, bx, by, smear) { blurPass(s, bx, smear, s.W, s.H, (a, l) => l * s.W + a); blurPass(s, by, smear, s.H, s.W, (a, l) => a * s.W + l); }
 const blur = (s, amt, smear) => blur2d(s, amt, amt, smear);
 
 /* ================= 2D effects (numbers as in WLED 16) ================= */
@@ -888,6 +873,1416 @@ add(127, 'Waving Cell@!,Blur,Amplitude 1,Amplitude 2,Amplitude 3,,Flow;;!;2;ix=0
   blur(s, sp.ix, false);
 });
 
+/* ---- batch A: more 1D effects (ported from WLED 16 FX.cpp) ---- */
+// palette 50 "Aurora" = gGradientPalettes[50 - 13] = Aurora_gp (default palette of Aurora)
+if (!P16[50]) {
+  GRAD[50] = [0,1,5,45, 64,0,200,23, 128,0,255,0, 170,0,243,45, 200,0,135,7, 255,1,5,45];
+  P16[50] = gradTo16(GRAD[50]);
+}
+if (!PAL_IDS.includes(50)) { PAL_IDS.push(50); PAL_IDS.sort((a, b) => a - b); }
+PAL_NAMES[50] = 'Aurora';
+
+const ma_FRAMETIME = 24;                                            // FRAMETIME: the simulator renders every 24 ms
+// hw_random8(n) / hw_random8(a, b) / hw_random16(n) / hw_random16(a, b) with the exact WLED scaling
+const ma_r8 = n => ((rnd(256) * (n >>> 0)) >>> 8) & 255;
+const ma_r8r = (a, b) => (a + ma_r8(b - a)) & 255;
+const ma_r16 = n => Math.floor(rnd(65536) * (n >>> 0) / 65536) & 0xFFFF;
+const ma_r16r = (a, b) => ((a + ma_r16(b - a)) << 16) >> 16;      // returns int16_t
+const ma_i16 = x => (x << 16) >> 16;                               // (int16_t) cast
+// a colour as uint32 holds it: integer channels (palette lookups of the page are fractional)
+const ma_c32 = c => [Math.floor(c[0]), Math.floor(c[1]), Math.floor(c[2]), Math.floor(c[3] || 0)];
+// color_blend() from colors.cpp: (c1 * (256 - b) + c2 * (1 + b)) >> 8 per channel
+const ma_blend = (a, b, amt) => { a = ma_c32(a); b = ma_c32(b); const k1 = 256 - amt, k2 = 1 + amt;
+  return [(a[0] * k1 + b[0] * k2) >> 8, (a[1] * k1 + b[1] * k2) >> 8, (a[2] * k1 + b[2] * k2) >> 8, (a[3] * k1 + b[3] * k2) >> 8]; };
+// color_fade(c, amount, true) from colors.cpp ("video": a channel of at least half the max of r, g, b gets +1)
+function ma_fadeVideo(c, amount) {
+  c = ma_c32(c); if (isBlack(c)) return [0, 0, 0, 0]; if (amount === 255) return c; if (amount === 0) return [0, 0, 0, 0];
+  const thr = (Math.max(c[0], c[1], c[2]) >> 1) + 1;
+  return c.map(v => ((v * amount) >> 8) + (v >= thr ? 1 : 0));
+}
+// Segment::color_from_palette: palette colour (integer, brightness applied like ColorFromPalette) with the white
+// channel of colour mcol (colour 0 for mcol >= 3); palette 0 with mcol < 3 gives color_fade(colour, pbri, true)
+const ma_cfp = (s, i, mapping, mcol = 0, pbri = 255, moving = false) => {
+  const sp = s.sp; if (!sp.pal && mcol < 3) return ma_fadeVideo(sp.col[mcol], pbri);
+  const c = ma_c32(cfp(s, i, mapping, mcol, 255, moving));
+  if (pbri < 255) for (let k = 0; k < 3; k++) c[k] = (c[k] * (pbri + 1)) >> 8;
+  c[3] = Math.floor(sp.col[mcol < 3 ? mcol : 0][3] || 0); return c; };
+// Segment::color_wheel: palette colour or CHSV32 rainbow, both with the white channel of colour 0
+const ma_wheel = (sp, pos) => { const c = ma_c32(wheel(sp, pos & 255)); c[3] = Math.floor(sp.col[0][3] || 0); return c; };
+const ma_same = (a, b) => pack(a) === pack(b);                     // uint32 comparison of two colours
+const ma_static = s => fill(s, s.sp.col[0]);                       // FX_FALLBACK_STATIC (mode_static)
+// color_add(c1, c2) without preserveCR, bit-exact on the packed uint32: a saturated channel also sets the lowest bit
+// of its neighbour lane (R -> W, B -> G, G -> R), as the WLED 16 code does
+function ma_colorAdd(a, b) {
+  const c1 = pack(a), c2 = pack(b); if (c1 === 0) return b; if (c2 === 0) return a;
+  const M = 0x00FF00FF; let rb = (c1 & M) + (c2 & M), wg = ((c1 >>> 8) & M) + ((c2 >>> 8) & M);
+  rb = (rb | (((rb & 0x01000100) - ((rb >>> 8) & 0x00010001)) & M)) >>> 0;
+  wg = (wg | (((wg & 0x01000100) - ((wg >>> 8) & 0x00010001)) & M)) >>> 0;
+  return unpack((rb | (wg << 8)) >>> 0);
+}
+const ma_call = st => { const c = st.call || 0; st.call = c + 1; return c; };   // SEGENV.call (incremented after every frame)
+
+// chase(): Chase, Chase Rainbow, Rainbow Runner
+function ma_chase(s, t, color1, color2, color3, doPalette) {
+  const sp = s.sp, st = s.st, L = s.L;
+  const counter = Math.imul(t >>> 0, (sp.sx >> 2) + 1) & 0xFFFF;   // uint16_t
+  const a = Math.floor(counter * L / 65536) & 0xFFFF;
+  st.step = a;
+  const size = 1 + ((sp.ix * L) >> 10);                              // up to 1/4 of the segment
+  let b = (a + size) & 0xFFFF; if (b > L) b -= L;
+  let c = (b + size) & 0xFFFF; if (c > L) c -= L;
+  if (doPalette) { for (let i = 0; i < L; i++) put(s, i, ma_cfp(s, i, true, 1)); } else fill(s, color1);
+  if (a < b) { for (let i = a; i < b; i++) put(s, i, color2); }
+  else { for (let i = a; i < L; i++) put(s, i, color2); for (let i = 0; i < b; i++) put(s, i, color2); }
+  if (b < c) { for (let i = b; i < c; i++) put(s, i, color3); }
+  else { for (let i = b; i < L; i++) put(s, i, color3); for (let i = 0; i < c; i++) put(s, i, color3); }
+}
+add(28, 'Chase@!,Width;!,!,!;!', (s, t) => {
+  const sp = s.sp; ma_call(s.st);
+  ma_chase(s, t, sp.col[1], isBlack(sp.col[2]) ? sp.col[0] : sp.col[2], sp.col[0], true);
+});
+add(30, 'Chase Rainbow@!,Width;!,!;!', (s, t) => {
+  const sp = s.sp, st = s.st, call = ma_call(st);
+  let sep = Math.floor(256 / s.L); if (!sep) sep = 1;               // segments longer than 256 LEDs
+  const color = ma_wheel(sp, ((st.step || 0) * sep + (call & 0xFF)) & 0xFF);
+  ma_chase(s, t, color, sp.col[0], sp.col[1], false);
+});
+add(33, 'Rainbow Runner@!,Size;Bg;!', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L, call = ma_call(st), step = st.step || 0;
+  const n = step & 0xFFFF, m = ((step + 1) % L) & 0xFFFF;
+  const color2 = ma_wheel(sp, (Math.floor(n * 256 / L) + (call & 0xFF)) & 0xFF);
+  const color3 = ma_wheel(sp, (Math.floor(m * 256 / L) + (call & 0xFF)) & 0xFF);
+  ma_chase(s, t, sp.col[0], color2, color3, false);
+});
+
+// Colorful: red - amber - green - blue running
+const ma_COLORFUL = [[255, 0, 0, 0], [238, 187, 0, 0], [0, 238, 0, 0], [0, 119, 204, 0]];
+const ma_PASTEL = [[255, 128, 64, 0], [229, 210, 65, 0], [119, 255, 119, 0], [119, 240, 240, 0]];
+add(34, 'Colorful@!,Saturation;1,2,3;!', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; ma_call(st);
+  if (st.step === undefined) { st.step = 0; st.aux0 = 0; }
+  let num = 4; const cols = [...ma_COLORFUL, BLACK, BLACK, BLACK, BLACK, BLACK];   // uint32_t cols[9]
+  if (sp.ix > 160 || sp.pal) {                                        // palette or colours
+    if (!sp.pal) { num = 3; for (let i = 0; i < 3; i++) cols[i] = sp.col[i]; }
+    else { let fac = 80; if (sp.pal === 52) { num = 5; fac = 61; } for (let i = 0; i < num; i++) cols[i] = ma_cfp(s, i * fac, false, 255, 255, true); }
+  } else if (sp.ix < 80) { for (let i = 0; i < 4; i++) cols[i] = ma_PASTEL[i]; }   // pastel (easter) colours
+  for (let i = num; i < num * 2 - 1; i++) cols[i] = cols[i - num];
+  const it = Math.floor(t / (50 + 8 * (255 - sp.sx)));
+  if (it !== st.step) { if (sp.sx > 0) st.aux0 = (st.aux0 + 1) & 0xFFFF; if (st.aux0 >= num) st.aux0 = 0; st.step = it; }
+  for (let i = 0; i < L; i += num) for (let j = 0; j < num; j++) put(s, i + j, cols[st.aux0 + j]);
+});
+
+// Traffic Light
+add(35, 'Traffic Light@!,US style;,!;!', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; ma_call(st);
+  if (L <= 1) return ma_static(s);
+  if (st.step === undefined) { st.step = 0; st.aux0 = 0; }
+  for (let i = 0; i < L; i++) put(s, i, ma_cfp(s, i, true, 1));
+  let mdelay = 500;
+  const RED = [255, 0, 0, 0], AMBER = [238, 204, 0, 0], GREEN = [0, 255, 0, 0];
+  for (let i = 0; i < L - 2; i += 3) {
+    switch (st.aux0) {
+      case 0: put(s, i, RED); mdelay = 150 + 100 * (255 - sp.sx); break;
+      case 1: put(s, i, RED); mdelay = 150 + 20 * (255 - sp.sx); put(s, i + 1, AMBER); break;
+      case 2: put(s, i + 2, GREEN); mdelay = 150 + 100 * (255 - sp.sx); break;
+      case 3: put(s, i + 1, invGamma(AMBER)); mdelay = 150 + 20 * (255 - sp.sx); break;   // gamma32inv as in WLED
+    }
+  }
+  if (((t >>> 0) - st.step) >>> 0 > mdelay) {
+    st.aux0++;
+    if (st.aux0 === 1 && sp.ix > 140) st.aux0 = 2;                    // US style: skip red + amber
+    if (st.aux0 > 3) st.aux0 = 0;
+    st.step = t >>> 0;
+  }
+});
+
+// Aurora: AuroraWave class with the fixed-point maths of WLED 16 (AW_SHIFT 16)
+const ma_AW_MAX = 20;                                                // W_MAX_COUNT (ESP32)
+const ma_waveZero = () => ({ center: 0, ageF: 0, ttl: 0, age: 0, width: 0, basealpha: 0, speed: 0, ws: 0, we: 0, left: 0, alive: false, col: [0, 0, 0, 0] });
+function ma_waveInit(w, L, color) {
+  w.ttl = ma_r16r(500, 1501) & 0xFFFF;
+  w.col = ma_c32(color);
+  w.basealpha = Math.floor(ma_r8r(60, 100) * 65536 / 100) & 0xFFFF;
+  w.age = 0;
+  w.width = (ma_r16r(Math.floor(L / 20), Math.floor(L / 6)) + 1) & 0xFFFF;
+  w.center = Math.imul(Math.floor((ma_r8(101) * 65536) / 100), L) | 0;   // 0-100 %
+  w.left = rnd(256) & 1;
+  w.speed = Math.floor((ma_r8r(10, 31) * 6 * 65536) / 25500) & 0xFFFF;
+  w.alive = true;
+}
+function ma_waveCache(w) {
+  const half = w.ttl >> 1;
+  let af = w.age < half ? Math.floor(w.age * 65536 / half) : Math.floor((w.ttl - w.age) * 65536 / half);
+  if (af >= 65536) af = 65535;
+  w.ageF = af;
+  const cl = w.center >> 16;
+  w.ws = ma_i16(ma_i16(cl) - ma_i16(w.width)); w.we = ma_i16(ma_i16(cl) + ma_i16(w.width));
+}
+function ma_waveColor(w, i) {
+  if (i < w.ws || i > w.we) return null;
+  let off = ((i << 16) - w.center) | 0; if (off < 0) off = -off;
+  const of = Math.trunc(off / w.width); if (of > 65536) return null;
+  let bf = 65536 - of;
+  bf = Math.floor(bf * w.ageF / 65536);
+  bf = Math.floor(bf * w.basealpha / 65536);
+  return [Math.floor(w.col[0] * bf / 65536), Math.floor(w.col[1] * bf / 65536), Math.floor(w.col[2] * bf / 65536), Math.floor(w.col[3] * bf / 65536)];
+}
+function ma_waveUpdate(w, L, speed) {
+  const step = (w.speed * speed) | 0;
+  w.center = (w.center + (w.left ? -step : step)) | 0;
+  w.age = (w.age + 1) & 0xFFFF;
+  if (w.age > w.ttl) w.alive = false;
+  else {
+    const ws = (w.width << 16) | 0, ls = (L << 16) | 0;
+    if (w.left) { if (w.center < -ws) w.alive = false; }
+    else if (w.center > ((ls + ws) | 0)) w.alive = false;
+  }
+}
+add(38, 'Aurora@!,!;1,2,3;!;;sx=24,pal=50', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L, call = ma_call(st);
+  const n = map(sp.ix, 0, 255, 2, ma_AW_MAX); st.aux1 = n;          // aux1 = wave count
+  const len = 32 * n;                                                // allocateData(sizeof(AuroraWave) * count)
+  if (!st.waves || st.dataLen < len) { st.waves = Array.from({ length: n }, ma_waveZero); st.dataLen = len; }
+  else if (call === 0) for (let i = 0; i < n; i++) st.waves[i] = ma_waveZero();
+  // zeroed data: every wave is dead on the first call and gets initialised
+  for (let i = 0; i < n; i++) {
+    const w = st.waves[i];
+    ma_waveUpdate(w, L, sp.sx);
+    if (!w.alive) ma_waveInit(w, L, ma_cfp(s, rnd(256), false, ma_r8r(0, 3)));
+    ma_waveCache(w);
+  }
+  let bl = 0; if (!isBlack(sp.col[0])) bl++; if (!isBlack(sp.col[1])) bl++; if (!isBlack(sp.col[2])) bl++;
+  bl = ginv8(bl);                                                    // gamma8inv: keep the backlight with gamma correction
+  for (let i = 0; i < L; i++) {
+    let m = [bl, bl, bl, 0];
+    for (let j = 0; j < n; j++) { const c = ma_waveColor(st.waves[j], i);
+      if (c) m = ma_colorAdd(m, c); }                                 // sum all waves influencing this pixel
+    put(s, i, m);
+  }
+});
+
+// Fire Flicker
+add(45, 'Fire Flicker@!,!;!;!;01', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; ma_call(st);
+  const it = Math.floor(t / (40 + (255 - sp.sx)));
+  if ((st.step || 0) === it) return;
+  const c0 = ma_c32(sp.col[0]), r = c0[0] & 255, g = c0[1] & 255, b = c0[2] & 255, w = c0[3] & 255;
+  let lum = !sp.pal ? Math.max(w, r, g, b) : 255;
+  lum = Math.floor(lum / (((256 - sp.ix) >> 4) + 1));
+  for (let i = 0; i < L; i++) {
+    const fl = ma_r8(lum);
+    if (!sp.pal) put(s, i, [Math.max(r - fl, 0), Math.max(g - fl, 0), Math.max(b - fl, 0), Math.max(w - fl, 0)]);
+    else put(s, i, ma_cfp(s, i, true, 0, 255 - fl));
+  }
+  st.step = it;
+});
+
+// Loading: gradient_base(true)
+add(47, 'Loading@!,Fade;!,!;!;;ix=16', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L, call = ma_call(st);
+  if (L <= 1) return ma_static(s);
+  const counter = Math.imul(t >>> 0, (sp.sx >> 2) + 1) & 0xFFFF;
+  let pp = Math.floor(counter * L / 65536) & 0xFFFF;
+  if (call === 0) pp = 0;
+  const brd = sp.ix >> 1;                                            // "1 + loading ? a : b" always takes intensity/2
+  const p2 = pp + L;
+  for (let i = 0; i < L; i++) {
+    let val = Math.abs((i > pp ? p2 : pp) - i);
+    val = brd > val ? Math.trunc(val * 255 / brd) : 255;
+    put(s, i, ma_blend(sp.col[0], ma_cfp(s, i, true, 1), val & 255));
+  }
+});
+
+// Two Dots
+add(50, 'Two Dots@!,Dot size,,,,,Overlay;1,2,Bg;!', (s, t) => {
+  const sp = s.sp, L = s.L; ma_call(s.st);
+  if (L <= 1) return ma_static(s);
+  const delay = 1 + Math.floor((ma_FRAMETIME << 3) / L);            // longer segments change faster
+  const it = Math.floor(t / map(sp.sx, 0, 255, delay << 4, delay));
+  const offset = it % L;
+  let width = (L * (sp.ix + 1)) >> 9; if (!width) width = 1;         // max width is half the strip
+  if (!sp.o2) fill(s, sp.col[2]);
+  const color1 = sp.col[0], color2 = ma_same(sp.col[1], sp.col[2]) ? color1 : sp.col[1];
+  for (let i = 0; i < width; i++) {
+    put(s, (offset + i) % L, color1);
+    put(s, (offset + i + (L >> 1)) % L, color2);
+  }
+});
+
+// Running Dual: running_base(false, true)
+const ma_sinGap = x => (x & 0x100) ? 0 : sin8w((x + 192) & 255);
+add(52, 'Running Dual@!,Wave width;L,!,R;!', (s, t) => {
+  const sp = s.sp, L = s.L; ma_call(s.st);
+  const xs = sp.ix >> 2, counter = Math.imul(t >>> 0, sp.sx) >>> 9;
+  for (let i = 0; i < L; i++) {
+    const a = (i * xs - counter) & 0xFFFF;
+    let ca = ma_blend(sp.col[1], ma_cfp(s, i, true, 0), ma_sinGap(a));
+    const b = ((L - 1 - i) * xs - counter) & 0xFFFF;
+    const cb = ma_blend(sp.col[1], ma_cfp(s, i, true, 2), ma_sinGap(b));
+    ca = ma_blend(ca, cb, 127);
+    put(s, i, ca);
+  }
+});
+
+// Tri Wipe
+add(55, 'Tri Wipe@!;1,2,3;!', (s, t) => {
+  const sp = s.sp, L = s.L; ma_call(s.st);
+  const cyc = 1000 + (255 - sp.sx) * 200, perc = (t >>> 0) % cyc;
+  const prog = Math.floor(perc * 65535 / cyc), ledIndex = Math.floor(prog * L * 3 / 65536);
+  for (let i = 0; i < L; i++) put(s, i, ma_cfp(s, i, true, 2));
+  if (ledIndex < L) {                                                // wipe from 0 to 1
+    for (let i = 0; i < L; i++) put(s, i, i > ledIndex ? sp.col[0] : sp.col[1]);
+  } else if (ledIndex < L * 2) {                                     // wipe from 1 to 2
+    const off = ledIndex - L; for (let i = off + 1; i < L; i++) put(s, i, sp.col[1]);
+  } else {                                                           // wipe from 2 to 0
+    const off = ledIndex - L * 2; for (let i = 0; i <= off; i++) put(s, i, sp.col[0]);
+  }
+});
+
+// ICU: two eyes that look around and blink
+add(58, 'ICU@!,!,,,,,Overlay;!,!;!', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; ma_call(st);
+  if (st.step === undefined) { st.step = 0; st.aux0 = 0; st.aux1 = 0; }
+  const now = t & 0xFFFF;                                            // low 16 bits only
+  let dest = st.aux1;
+  const space = (sp.ix >> 3) + 2, gap = Math.floor(L / space);
+  let state = st.step >>> 16, next = st.step & 0xFFFF;
+  const pindex = map(dest, 0, L - gap, 0, 255) & 255;
+  const col = ma_cfp(s, pindex, false, 0);
+  fill(s, sp.o2 ? BLACK : sp.col[1]);
+  if (state !== 1) {                                                 // eyes open
+    put(s, dest, col); put(s, dest + gap, col);
+    if (state === 3) {                                               // moving: draw the next position too
+      if (st.aux0 > st.aux1) dest++; else if (st.aux0 < st.aux1) dest--;
+      put(s, dest, col); put(s, dest + gap, col);
+    }
+  }
+  if (ma_i16(now - next) >= 0) {
+    switch (state) {
+      case 0:                                                        // pause part 1
+        state++;
+        if (ma_r8(6) === 0) { next = (now + 200) & 0xFFFF; break; }   // blink once in a while
+        // falls through
+      case 1:                                                        // blink done -> pause part 2
+        next = (now + 500 + ma_r16(1000)) & 0xFFFF; state++; break;
+      case 2:                                                        // pause done -> move
+        st.aux0 = ma_r16(L - gap); next = now; state++; break;
+      default:                                                       // move (state 3)
+        st.aux1 = dest & 0xFFFF;
+        next = (now + 5 + Math.floor(50 * (255 - sp.sx) / L)) & 0xFFFF;   // SPEED_FORMULA_L
+        if (st.aux0 === dest) { next = (now + 500 + ma_r16(1000)) & 0xFFFF; state = 0; }
+        break;
+    }
+  }
+  st.step = ((state << 16) | next) >>> 0;
+});
+
+// Multi Comet
+add(59, 'Multi Comet@!,Fade;!,!;!;1', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; ma_call(st);
+  const it = Math.floor(t / (10 + (255 - sp.sx)));
+  if ((st.step || 0) === it) return;
+  if (!st.comets) st.comets = new Uint16Array(8);                    // allocateData: zeroed, all comets start at 0
+  fadeOut(s, (sp.ix >> 1) + 128);
+  const c2 = !isBlack(sp.col[2]);
+  for (let i = 0; i < 8; i++) {
+    if (st.comets[i] < L) {
+      const index = st.comets[i];
+      put(s, index, c2 && !(i % 2) ? sp.col[2] : ma_cfp(s, index, true, 0));
+      st.comets[i]++;
+    } else if (!ma_r16(L)) st.comets[i] = 0;
+  }
+  st.step = it;
+});
+
+// Juggle: eight coloured dots, weaving in and out of sync with each other
+add(64, 'Juggle@!,Trail;;!;;sx=64,ix=128', (s, t) => {
+  const sp = s.sp, L = s.L; ma_call(s.st);
+  if (L <= 1) return ma_static(s);
+  fadeToBlackBy(s, 192 - Math.trunc(3 * sp.ix / 4));
+  const pal = sp.pal ? curPal(s) : null;
+  let hue = 0;
+  for (let i = 0; i < 8; i++) {
+    const index = beatsin88(((16 + sp.sx) * (i + 7)) & 0xFFFF, 0, L - 1, t);
+    const c = ma_c32(getPx(s, index)), d = pal ? ma_c32(cfpal(pal, hue, 255, 1)) : hsvRainbow(hue, 220, 255);
+    put(s, index, [Math.max(c[0], d[0]), Math.max(c[1], d[1]), Math.max(c[2], d[2]), 0]);   // CRGB |= (white is dropped)
+    hue = (hue + 32) & 255;
+  }
+});
+
+// Palette: float path of WLED (ESP32), sin_t/cos_t = sin_approx/cos_approx, float32 maths via Math.fround
+const ma_f = Math.fround;
+const ma_SINK = ma_f(0xFFFF / (2 * Math.PI)), ma_MAXANGLE = ma_f(Math.PI / 256), ma_ANIMROT = ma_f(2 * Math.PI / 0xFFFF);
+const ma_sinA = th => ma_f(sin16(Math.trunc(ma_f(th * ma_SINK)) & 0xFFFF) / 0x7FFF);
+const ma_cosA = th => ma_f(sin16(((Math.trunc(ma_f(th * ma_SINK)) & 0xFFFF) + 0x4000) & 0xFFFF) / 0x7FFF);
+add(65, 'Palette@Shift,Size,Rotation,,,Animate Shift,Animate Rotation,Anamorphic;;!;12;ix=112,c1=0,o1=1,o2=0,o3=1', (s, t) => {
+  const sp = s.sp, f = ma_f; ma_call(s.st);
+  // WLED draws real 2D on a matrix (strip.isMatrix); here only when the 1D layout is "Pixels" (px is then W × H)
+  const isMatrix = strip.m2d && !s.map && s.L === s.SW * s.SH;
+  const cols = isMatrix ? s.SW : s.L;
+  const rows = isMatrix ? s.SH : segs.filter(g => g.stop > g.start).length;   // strip.getActiveSegmentsNum()
+  const theta = !sp.o2 ? f((sp.c1 + 128) * ma_MAXANGLE) : f((Math.imul(t >>> 0, (sp.c1 >> 4) + 1) & 0xFFFF) * ma_ANIMROT);
+  const sinT = ma_sinA(theta), cosT = ma_cosA(theta);
+  const maxX = Math.max(1, cols - 1), maxY = Math.max(1, rows - 1), sq = sp.o3;
+  const maxXIn = sq ? maxX : 1, maxYIn = sq ? maxY : 1, maxXOut = !sq ? maxX : 1, maxYOut = !sq ? maxY : 1;
+  const cX = f(maxXOut / 2), cY = f(maxYOut / 2);
+  const scale = f(Math.abs(sinT) + f(f(Math.abs(cosT) * maxYOut) / maxXOut));
+  const yFrom = isMatrix ? 0 : (sp.id || 0), yTo = isMatrix ? maxY : yFrom;   // 1D: each segment is one line of a 2D picture
+  const shift = !sp.o1 ? sp.sx : ((Math.imul(t >>> 0, (sp.sx >> 3) + 1) & 0xFFFF) >> 8);
+  for (let y = yFrom; y <= yTo; y++) {
+    const ytCos = f(f(cosT * f(y - f(cY * maxYIn))) / f(maxYIn * scale));
+    for (let x = 0; x < cols; x++) {
+      const xtSin = f(f(sinT * f(x - f(cX * maxXIn))) / f(maxXIn * scale));
+      const srcX = f(f(xtSin + ytCos) + cX);
+      let ci = Math.trunc(f(f(Math.min(Math.max(srcX, 0), maxXOut) * 255) / maxXOut));
+      ci = sp.ix <= 128 ? Math.trunc(ci * sp.ix / 128) : Math.trunc((sp.ix - 112) * ci / 16);
+      ci -= shift;
+      const c = ma_wheel(sp, ci & 255);
+      if (isMatrix) { if (y < s.SH) put(s, y * s.SW + x, c); } else put(s, x, c);
+    }
+  }
+});
+
+/* ---- batch B: more 1D effects (ported from WLED 16 FX.cpp, integer maths as in C) ---- */
+// palette 51 "Atlantica" = gGradientPalettes[51 - 13] = Atlantica_gp (default palette of Pacifica)
+if (!P16[51]) {
+  GRAD[51] = [0,0,28,112, 50,32,96,255, 100,0,243,45, 150,12,95,82, 200,25,190,95, 255,40,170,80];
+  P16[51] = gradTo16(GRAD[51]);
+}
+if (!PAL_IDS.includes(51)) { PAL_IDS.push(51); PAL_IDS.sort((a, b) => a - b); }
+PAL_NAMES[51] = 'Atlantica';
+
+const mb_FRAMETIME = 24;                                  // FRAMETIME: the simulator renders every 24 ms
+const mb_FRAMETIME_FIXED = 23;                            // FRAMETIME_FIXED = 1000 / WLED_FPS (42)
+const mb_f = Math.fround;                                 // C float (32 bit)
+// On a running WLED strip.now is the uptime, so a timestamp of 0 in fresh SEGENV/data lies far in the past.
+// The simulator clock starts at 0, so such timestamps start 2^31 ms back (only where WLED compares them).
+const mb_longAgo = t => (t - 0x80000000) >>> 0;
+// hw_random8(n), hw_random8(a, b), hw_random16(n) from fcn_declare.h (same scaling as in WLED)
+const mb_r8 = n => (Math.imul(rnd(256), n >>> 0) >>> 8) & 255;
+const mb_r8r = (a, b) => (a + mb_r8((b - a) >>> 0)) & 255;
+const mb_r16 = n => (Math.imul(rnd(65536), n >>> 0) >>> 16) & 0xFFFF;
+const mb_ULTRAWHITE = [255, 255, 255, 255];
+const mb_isOff = c => !(c[0] | 0) && !(c[1] | 0) && !(c[2] | 0) && !(c[3] | 0);   // uint32 colour == 0
+// color_blend() from colors.cpp: (c1 * (256 - b) + c2 * (1 + b)) >> 8 per channel
+function mb_blend(a, b, bl) {
+  bl &= 255; const k1 = 256 - bl, k2 = bl + 1;
+  return [((a[0] | 0) * k1 + (b[0] | 0) * k2) >> 8, ((a[1] | 0) * k1 + (b[1] | 0) * k2) >> 8,
+          ((a[2] | 0) * k1 + (b[2] | 0) * k2) >> 8, ((a[3] | 0) * k1 + (b[3] | 0) * k2) >> 8];
+}
+// color_fade() from colors.cpp (video: channels at or above half of the brightest r/g/b keep one extra step)
+function mb_fade(c, amt, video) {
+  const r = c[0] | 0, g = c[1] | 0, b = c[2] | 0, w = c[3] | 0;
+  if (!r && !g && !b && !w) return [0, 0, 0, 0];
+  amt &= 255; if (amt === 255) return [r, g, b, w]; if (amt === 0) return [0, 0, 0, 0];
+  if (video) { const thr = (Math.max(r, g, b) >> 1) + 1, d = v => ((v * amt) >> 8) + (v >= thr ? 1 : 0); return [d(r), d(g), d(b), d(w)]; }
+  const k = amt + 1; return [(r * k) >> 8, (g * k) >> 8, (b * k) >> 8, (w * k) >> 8];
+}
+// ColorFromPalette() from colors.cpp: unsigned index (not cut to 8 bit before the NOWRAP remap), integer blend
+// blend: 0 NOBLEND, 1 LINEARBLEND, 2 LINEARBLEND_NOWRAP
+function mb_CFP(pal, index, bri = 255, blend = 1) {
+  index >>>= 0; if (blend === 2) index = Math.imul(index, 0xF0) >>> 8;
+  const hi4 = (index & 255) >> 4, lo4 = index & 15, e = pal[hi4]; let r = e[0] | 0, g = e[1] | 0, b = e[2] | 0;
+  if (lo4 && blend) {
+    const n = pal[hi4 === 15 ? 0 : hi4 + 1], f2 = lo4 << 4, f1 = 256 - f2;
+    r = (r * f1 + (n[0] | 0) * f2) >> 8; g = (g * f1 + (n[1] | 0) * f2) >> 8; b = (b * f1 + (n[2] | 0) * f2) >> 8;
+  }
+  bri &= 255; if (bri < 255) { const k = bri + 1; r = (r * k) >> 8; g = (g * k) >> 8; b = (b * k) >> 8; }
+  return [r, g, b, 0];
+}
+// Segment::color_from_palette(i, mapping, moving, mcol, pbri) with paletteBlend 0 (WLED default)
+function mb_cfp(s, i, mapping, moving, mcol, pbri = 255) {
+  const sp = s.sp, color = sp.col[mcol < 3 ? mcol : 0];
+  if (!sp.pal && mcol < 3) return mb_fade(color, pbri, true);
+  let idx = i & 0xFFFF; if (mapping) idx = Math.min(Math.floor(idx * 255 / s.L), 255);
+  const c = mb_CFP(curPal(s), idx, pbri, moving ? 1 : 2); c[3] = color[3] | 0; return c;
+}
+// Segment::color_wheel(pos)
+function mb_wheel(s, pos) {
+  const sp = s.sp; if (sp.pal) return mb_cfp(s, pos & 255, false, true, 0);
+  const c = hsvRainbow(pos & 255, 255, 255); c[3] = sp.col[0][3] | 0; return c;
+}
+const mb_beat16 = (bpm, t) => beat88(bpm < 256 ? bpm << 8 : bpm, t);
+const mb_qadd8 = (a, b) => Math.min(255, a + b);
+// Arduino map() with 32-bit long arithmetic as on the ESP32 (the product can overflow)
+const mb_map32 = (x, a, b, c, d) => (Math.trunc(Math.imul((x - a) | 0, (d - c) | 0) / ((b - a) | 0)) + c) | 0;
+// fill_gradient_RGB() from fastled_slim.cpp
+function mb_fillGrad(e, a, ca, b, cb) {
+  if (b < a) { [a, b] = [b, a]; [ca, cb] = [cb, ca]; }
+  const div = (b - a) || 1, d = [0, 1, 2].map(k => Math.trunc(((cb[k] - ca[k]) << 16) / div)), acc = [ca[0] << 16, ca[1] << 16, ca[2] << 16];
+  for (let i = a; i <= b; i++) { e[i] = [(acc[0] >> 16) & 255, (acc[1] >> 16) & 255, (acc[2] >> 16) & 255, 0]; for (let k = 0; k < 3; k++) acc[k] += d[k]; }
+}
+// CRGBPalette16(c1, c2, c3, c4)
+function mb_pal4(c1, c2, c3, c4) { const e = []; mb_fillGrad(e, 0, c1, 5, c2); mb_fillGrad(e, 5, c2, 10, c3); mb_fillGrad(e, 10, c3, 15, c4); return e; }
+// nblendPaletteTowardPalette() from fastled_slim.cpp (48 bytes r, g, b of 16 entries)
+function mb_nblendPal(cur, tgt, maxChanges) {
+  let changes = 0;
+  for (let i = 0; i < 48; i++) {
+    const e = (i / 3) | 0, ch = i % 3, b = tgt[e][ch]; let a = cur[e][ch];
+    if (a === b) continue;
+    if (a < b) { a++; changes++; }
+    if (a > b) { a--; changes++; if (a > b) a--; }
+    cur[e][ch] = a;
+    if (changes >= maxChanges) break;
+  }
+}
+const mb_static = s => fill(s, s.sp.col[0]);                     // FX_FALLBACK_STATIC
+
+// 68 BPM
+add(68, 'Bpm@!;!;!;;sx=64', (s, t) => {
+  const stp = Math.floor((t >>> 0) / 20) & 0xFF, beat = bs8(t, s.sp.sx, 64, 255);
+  for (let i = 0; i < s.L; i++) put(s, i, mb_cfp(s, stp + i * 2, false, false, 0, beat - stp + i * 10));
+});
+
+// 75 Lake
+add(75, 'Lake@!;Fx;!', (s, t) => {
+  const spd = Math.floor(s.sp.sx / 10), wave1 = bs8(t, spd + 2, -64, 64), wave2 = bs8(t, spd + 1, -64, 64), wave3 = bs8(t, spd + 2, 0, 80);
+  for (let i = 0; i < s.L; i++) {
+    const index = (cos8w((i * 15 + wave1) & 255) >> 1) + (cubicwave8((i * 23 + wave2) & 255) >> 1);
+    const lum = index > wave3 ? index - wave3 : 0;
+    put(s, i, mb_cfp(s, index, false, false, 0, lum));
+  }
+});
+
+// 87 Glitter (glitter_base)
+function mb_glitterBase(s, intensity, col) { if (intensity > rnd(256)) put(s, mb_r16(s.L), col); }
+add(87, 'Glitter@!,!,,,,,Overlay;,,Glitter color;!;;pal=11,m12=0', (s, t) => {
+  const sp = s.sp, L = s.L;
+  if (!sp.o2) {                                                  // check2 off: palette background
+    let counter = 0;
+    if (sp.sx !== 0) counter = (Math.imul(t >>> 0, (sp.sx >> 3) + 1) & 0xFFFF) >> 8;
+    const noWrap = sp.sx === 0;                                  // paletteBlend 0
+    for (let i = 0; i < L; i++) {
+      let ci = (Math.floor(i * 255 / L) - counter) >>> 0;
+      if (noWrap) ci = map(ci, 0, 255, 0, 240);
+      put(s, i, mb_cfp(s, ci, false, true, 255));
+    }
+  }
+  mb_glitterBase(s, sp.ix, mb_isOff(sp.col[2]) ? mb_ULTRAWHITE : sp.col[2]);
+});
+
+// 88 Candle (candle(false))
+add(88, 'Candle@!,!;!,!;!;01;sx=96,ix=224,pal=0', (s, t) => {
+  const sp = s.sp, st = s.st;
+  if (st.last === undefined) { st.last = mb_longAgo(t); st.aux0 = 0; st.aux1 = 0; st.step = 0; }
+  if (((t - st.last) >>> 0) < mb_FRAMETIME_FIXED) return;        // limit update rate
+  st.last = t >>> 0;
+  const valrange = sp.ix, rndval = valrange >> 1;
+  const speedFactor = sp.sx > 252 ? 1 : sp.sx > 99 ? 2 : sp.sx > 49 ? 3 : 4;
+  let v = st.aux0, target = st.aux1, fadeStep = st.step;
+  if (fadeStep === 0) { v = 128; target = 130 + mb_r8(4); fadeStep = 1; }
+  let newTarget = false;
+  if (target > v) { v = mb_qadd8(v, fadeStep); if (v >= target) newTarget = true; }
+  else { v = Math.max(0, v - fadeStep); if (v <= target) newTarget = true; }
+  if (newTarget) {
+    target = mb_r8(rndval) + mb_r8(rndval);
+    if (target < (rndval >> 1)) target = (rndval >> 1) + mb_r8(rndval);
+    target += 255 - valrange;
+    const dif = target > v ? target - v : v - target;
+    fadeStep = dif >> speedFactor; if (fadeStep === 0) fadeStep = 1;
+  }
+  for (let j = 0; j < s.L; j++) put(s, j, mb_blend(sp.col[1], mb_cfp(s, j, true, false, 0), v));
+  st.aux0 = v; st.aux1 = target; st.step = fadeStep;
+});
+
+// 91 Bouncing Balls (no virtual strips: a 1D effect on a matrix is drawn as one strip here)
+add(91, 'Bouncing Balls@Gravity,# of balls,,,,,Overlay;!,!,!;!;1;m12=1', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return mb_static(s);
+  const maxNumBalls = 16, time = t >>> 0;
+  if (!sp.o2) fill(s, !mb_isOff(sp.col[2]) ? BLACK : sp.col[1]);
+  const numBalls = Math.floor(sp.ix * (maxNumBalls - 1) / 255) + 1, gravity = mb_f(-9.81), hasCol2 = !mb_isOff(sp.col[2]);
+  if (!st.balls) st.balls = Array.from({ length: maxNumBalls }, () => ({ last: time, vel: 0, h: 0 }));   // SEGENV.call == 0
+  for (let i = 0; i < numBalls; i++) {
+    const b = st.balls[i];
+    const since = mb_f(Math.floor(((time - b.last) >>> 0) / (((255 - sp.sx) >> 6) + 1)));
+    const sec = mb_f(since / 1000);
+    b.h = mb_f(mb_f(mb_f(mb_f(0.5 * gravity) * sec) + b.vel) * sec);
+    if (b.h <= 0) {
+      b.h = 0;
+      const damp = mb_f(mb_f(0.9) - mb_f(i / (numBalls * numBalls)));
+      b.vel = mb_f(damp * b.vel);
+      b.last = time;
+      if (b.vel < mb_f(0.015)) b.vel = mb_f(mb_f(mb_f(Math.sqrt(mb_f(-2 * gravity))) * mb_r8r(5, 11)) / 10);
+    } else if (b.h > 1) continue;                                  // do not draw OOB ball
+    let color = sp.col[0];
+    if (sp.pal) color = mb_wheel(s, i * Math.floor(256 / Math.max(numBalls, 8)));
+    else if (hasCol2) color = sp.col[i % 3];
+    put(s, Math.round(mb_f(b.h * (L - 1))), color);
+  }
+});
+
+// 93 Sinelon Dual (sinelon_base(true))
+function mb_sinelon(s, t, dual, rainbow) {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return mb_static(s);
+  fadeOut(s, sp.ix);
+  const pos = beatsin16(Math.floor(sp.sx / 10), 0, L - 1, t);
+  if (st.aux0 === undefined) st.aux0 = pos;
+  let color1 = mb_cfp(s, pos, true, false, 0), color2 = sp.col[2];
+  if (rainbow) color1 = mb_wheel(s, (pos & 7) * 32);
+  put(s, pos, color1);
+  if (dual) {
+    if (mb_isOff(color2)) color2 = mb_cfp(s, pos, true, false, 0);
+    if (rainbow) color2 = color1;
+    put(s, L - 1 - pos, color2);
+  }
+  if (st.aux0 !== pos) {
+    if (st.aux0 < pos) for (let i = st.aux0; i < pos; i++) { put(s, i, color1); if (dual) put(s, L - 1 - i, color2); }
+    else for (let i = st.aux0; i > pos; i--) { put(s, i, color1); if (dual) put(s, L - 1 - i, color2); }
+    st.aux0 = pos;
+  }
+}
+add(93, 'Sinelon Dual@!,Trail;!,!,!;!', (s, t) => mb_sinelon(s, t, true, false));
+
+// 95 Popcorn (no virtual strips)
+add(95, 'Popcorn@!,!,,,,,Overlay;!,!,!;!;;m12=1', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return mb_static(s);
+  const usable = 21;                                              // maxNumPopcorn, 21 * 20 bytes fit FAIR_DATA_PER_SEG
+  if (!st.pc) st.pc = Array.from({ length: usable }, () => ({ pos: 0, vel: 0, ci: 0 }));   // zeroed data
+  const hasCol2 = !mb_isOff(sp.col[2]);
+  if (!sp.o2) fill(s, hasCol2 ? BLACK : sp.col[1]);
+  const gravity = mb_f(mb_f(mb_f(-0.0001) - mb_f(sp.sx / 200000)) * L);
+  let num = Math.floor(sp.ix * usable / 255); if (num === 0) num = 1;
+  for (let i = 0; i < num; i++) {
+    const p = st.pc[i];
+    if (p.pos >= 0) { p.pos = mb_f(p.pos + p.vel); p.vel = mb_f(p.vel + gravity); }   // active kernel
+    else if (rnd(256) < 2) {                                      // POP!!!
+      p.pos = mb_f(0.01);
+      let peak = 128 + mb_r8(128); peak = (peak * (L - 1)) >> 8;
+      p.vel = mb_f(Math.sqrt(mb_f(mb_f(-2 * gravity) * peak)));
+      if (sp.pal) p.ci = rnd(256);
+      else { let col = mb_r8r(0, 3); if (!hasCol2 || mb_isOff(sp.col[col])) col = 0; p.ci = col; }
+    }
+    if (p.pos >= 0) {
+      let col = mb_wheel(s, p.ci);
+      if (!sp.pal && p.ci < 3) col = sp.col[p.ci];
+      const led = Math.trunc(p.pos);
+      if (led < L) put(s, led, col);
+    }
+  }
+});
+
+// 96 Drip (no virtual strips)
+add(96, 'Drip@Gravity,# of drips,,,,,Overlay;!,!;!;;m12=1', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return mb_static(s);
+  const maxNumDrops = 4;
+  if (!st.d) st.d = Array.from({ length: maxNumDrops }, () => ({ pos: 0, vel: 0, col: 0, ci: 0 }));   // zeroed data
+  if (!sp.o2) fill(s, sp.col[1]);
+  const numDrops = 1 + (sp.ix >> 6), c0 = sp.col[0], sourcedrop = 12;
+  const gravity = mb_f(mb_f(mb_f(-0.0005) - mb_f(sp.sx / 50000)) * Math.max(1, L - 1));
+  for (let j = 0; j < numDrops; j++) {
+    const d = st.d[j];
+    if (d.ci === 0) { d.pos = mb_f(L - 1); d.vel = 0; d.col = sourcedrop; d.ci = 1; }   // init
+    put(s, L - 1, mb_blend(BLACK, c0, sourcedrop));               // water source
+    if (d.ci === 1) {                                             // forming
+      if (d.col > 255) d.col = 255;
+      put(s, Math.trunc(d.pos) & 0xFFFF, mb_blend(BLACK, c0, d.col));
+      d.col = (d.col + map(sp.sx, 0, 255, 1, 6)) & 0xFFFF;        // swelling
+      if (rnd(256) < Math.floor(d.col / 10)) { d.ci = 2; d.col = 255; }   // random drop
+    }
+    if (d.ci > 1) {                                               // falling
+      if (d.pos > 0) {
+        d.pos = mb_f(d.pos + d.vel); if (d.pos < 0) d.pos = 0;
+        d.vel = mb_f(d.vel + gravity);
+        for (let i = 1; i < 7 - d.ci; i++) put(s, Math.min(Math.trunc(d.pos) + i, L - 1), mb_blend(BLACK, c0, Math.floor(d.col / i)));
+        if (d.ci > 2) put(s, 0, mb_blend(c0, BLACK, d.col));       // some water on the floor
+      } else {                                                    // hit bottom
+        if (d.ci > 2) { d.ci = 0; d.col = sourcedrop; }
+        else {
+          if (d.ci === 2) { d.vel = mb_f(-d.vel / 4); d.pos = mb_f(d.pos + d.vel); }   // init bounce
+          d.col = sourcedrop * 2; d.ci = 5;
+        }
+      }
+    }
+  }
+});
+
+// 97 Plasma
+add(97, 'Plasma@Phase,!;!;!', (s, t) => {
+  const sp = s.sp, st = s.st;
+  if (st.aux0 === undefined) st.aux0 = mb_r8r(0, 2);
+  const thisPhase = bs8(t, 6 + st.aux0, -64, 64), thatPhase = bs8(t, 7 + st.aux0, -64, 64), k = sp.sx >> 5;
+  const cut = bs8(t, 7, 0, 128 - (sp.ix >> 1));
+  for (let i = 0; i < s.L; i++) {
+    const colorIndex = (cubicwave8((i * (2 + 3 * k) + thisPhase) & 0xFF) >> 1) + (cos8w((i * (1 + 2 * k) + thatPhase) & 0xFF) >> 1);
+    const thisBright = Math.max(0, colorIndex - cut);             // qsub8
+    put(s, i, mb_cfp(s, colorIndex, false, false, 0, thisBright));
+  }
+});
+
+// 100 Heartbeat
+add(100, 'Heartbeat@!,!;!,!;!;01;m12=1', (s, t) => {
+  const sp = s.sp, st = s.st;
+  if (st.step === undefined) { st.step = mb_longAgo(t); st.aux0 = 0; st.aux1 = 0; }
+  const bpm = 40 + (sp.sx >> 3), msPerBeat = Math.floor(60000 / bpm), secondBeat = Math.floor(msPerBeat / 3);
+  const beatTimer = (t - st.step) >>> 0;
+  st.aux1 = Math.floor(st.aux1 * 2042 / (2048 + sp.ix));
+  if (beatTimer > secondBeat && !st.aux0) { st.aux1 = 0xFFFF; st.aux0 = 1; }   // second beat
+  if (beatTimer > msPerBeat) { st.aux1 = 0xFFFF; st.aux0 = 0; st.step = t >>> 0; }
+  const b = 255 - (st.aux1 >> 8);
+  for (let i = 0; i < s.L; i++) put(s, i, mb_blend(mb_cfp(s, i, true, false, 0), sp.col[1], b));
+});
+
+// 101 Pacifica: own palettes (as in FX.cpp, gamma 2.0 inverted) unless a palette is chosen
+const mb_PAC1 = HX([0x002229, 0x001E2F, 0x001934, 0x001938, 0x00143F, 0x001443, 0x00B047, 0x00B04C,
+                    0x00004F, 0x000054, 0x000062, 0x00006F, 0x00007A, 0x000085, 0x47938A, 0x64D08E]);
+const mb_PAC2 = HX([0x002229, 0x001E2F, 0x001934, 0x001938, 0x00143F, 0x001443, 0x00B047, 0x00B04C,
+                    0x00004F, 0x000054, 0x000062, 0x00006F, 0x00007A, 0x000085, 0x369B90, 0x4FDC9B]);
+const mb_PAC3 = HX([0x00142C, 0x00193B, 0x002247, 0x002551, 0x002C5A, 0x002F63, 0x00346B, 0x003671,
+                    0x003B78, 0x003F7F, 0x00478E, 0x004D9C, 0x0054A9, 0x005AB4, 0x3F7FDC, 0x5A9CFF]);
+function mb_pacLayer(s, i, p, cistart, wavescale, bri, ioff) {
+  let ci = cistart & 0xFFFF, waveangle = ioff & 0xFFFF; const half = ((wavescale & 0xFFFF) >> 1) + 20;
+  waveangle = (waveangle + (120 + s.sp.ix) * i) >>> 0;
+  const s16 = sin16(waveangle) + 32768, cs = scale16(s16, half) + half;
+  ci = (ci + cs * i) >>> 0;
+  const sindex8 = scale16(sin16(ci) + 32768, 240);
+  return mb_CFP(p, sindex8, bri, 1);
+}
+add(101, 'Pacifica@!,Angle;;!;;pal=51', (s, t) => {
+  const sp = s.sp, st = s.st;
+  if (st.step === undefined) { st.aux0 = 0; st.aux1 = 0; st.step = 0; }
+  let p1 = mb_PAC1, p2 = mb_PAC2, p3 = mb_PAC3;
+  if (sp.pal) p1 = p2 = p3 = curPal(s);
+  let c1 = st.aux0, c2 = st.aux1, c3 = st.step & 0xFFFF, c4 = st.step >>> 16;
+  const deltams = (mb_FRAMETIME >> 2) + ((mb_FRAMETIME * sp.sx) >> 7);
+  // (WLED also sets strip.now to a scaled time here, but nothing reads it: the beat functions use millis())
+  const sf1 = beatsin16(3, 179, 269, t), sf2 = beatsin16(4, 179, 269, t);
+  const d1 = Math.floor(deltams * sf1 / 256), d2 = Math.floor(deltams * sf2 / 256), d21 = Math.floor((d1 + d2) / 2);
+  c1 = (c1 + d1 * beatsin88(1011, 10, 13, t)) >>> 0;
+  c2 = (c2 - d21 * beatsin88(777, 8, 11, t)) >>> 0;
+  c3 = (c3 - d1 * beatsin88(501, 5, 7, t)) >>> 0;
+  c4 = (c4 - d2 * beatsin88(257, 4, 6, t)) >>> 0;
+  st.aux0 = c1 & 0xFFFF; st.aux1 = c2 & 0xFFFF; st.step = ((c4 << 16) | (c3 & 0xFFFF)) >>> 0;
+  const basethreshold = bs8(t, 9, 55, 65); let wave = beat8(7, t);
+  const ws1 = beatsin16(3, 11 * 256, 14 * 256, t), br1 = bs8(t, 10, 70, 130), of1 = -mb_beat16(301, t) & 0xFFFF;
+  const ws2 = beatsin16(4, 6 * 256, 9 * 256, t), br2 = bs8(t, 17, 40, 80), of2 = mb_beat16(401, t);
+  const br3 = bs8(t, 9, 10, 38), of3 = -mb_beat16(503, t) & 0xFFFF, br4 = bs8(t, 8, 10, 28), of4 = mb_beat16(601, t);
+  for (let i = 0; i < s.L; i++) {
+    let r = 2, g = 6, b = 10;
+    const plus = c => { r = mb_qadd8(r, c[0]); g = mb_qadd8(g, c[1]); b = mb_qadd8(b, c[2]); };
+    plus(mb_pacLayer(s, i, p1, c1, ws1, br1, of1));
+    plus(mb_pacLayer(s, i, p2, c2, ws2, br2, of2));
+    plus(mb_pacLayer(s, i, p3, c3, 6 * 256, br3, of3));
+    plus(mb_pacLayer(s, i, p3, c4, 5 * 256, br4, of4));
+    const threshold = scale8(sin8w(wave), 20) + basethreshold; wave += 7;   // whitecaps
+    const l = ((r + g + b) * 21846) >> 16;                       // getAverageLight()
+    if (l > threshold) { const ov = l - threshold, ov2 = mb_qadd8(ov, ov); plus([ov, ov2, mb_qadd8(ov2, ov2)]); }
+    put(s, i, [r, g, b, 0]);
+  }
+});
+
+// 104 Sunrise (time from millis() = t)
+add(104, 'Sunrise@Time [min],Width;;!;;pal=35,sx=60', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L; if (L <= 1) return mb_static(s);
+  if (st.aux0 === undefined || sp.sx !== st.aux0) { st.step = t >>> 0; st.aux0 = sp.sx; }   // save starting time
+  fill(s, BLACK);
+  let stage = 0xFFFF, s10 = Math.floor(((t - st.step) >>> 0) / 100);   // tenths of seconds
+  if (sp.sx > 120) {                                              // quick sunrise and sunset
+    const counter = Math.imul(t >>> 1, ((sp.sx - 120) >> 1) + 1) >>> 0;
+    stage = tri16(counter & 0xFFFF);
+  } else if (sp.sx) {                                             // sunrise (1-60 min) or sunset (61-120)
+    let durMins = sp.sx; if (durMins > 60) durMins -= 60;
+    const s10Target = durMins * 600; if (s10 > s10Target) s10 = s10Target;
+    stage = mb_map32(s10, 0, s10Target, 0, 0xFFFF) >>> 0;       // overflows like in WLED after 54.6 min of 60
+    if (sp.sx > 60) stage = (0xFFFF - stage) >>> 0;
+  }
+  for (let i = 0; i <= (L >> 1); i++) {
+    let wave = tri16(Math.floor((Math.imul(i, stage) >>> 0) / L) & 0xFFFF);
+    wave = (wave >> 8) + ((wave * sp.ix) >> 15);
+    const c = mb_cfp(s, wave > 240 ? 240 : wave, false, true, 255);
+    put(s, i, c); put(s, L - i - 1, c);
+  }
+});
+
+// 107 Noise Pal: own slowly changing random palettes, or the chosen palette
+add(107, 'Noise Pal@!,Scale;;!', (s, t) => {
+  const sp = s.sp, st = s.st, scale = 15 + (sp.ix >> 2);
+  if (!st.p0) {                                                   // 2 zeroed palettes
+    st.p0 = Array.from({ length: 16 }, () => [0, 0, 0, 0]); st.p1 = Array.from({ length: 16 }, () => [0, 0, 0, 0]);
+    st.aux0 = 0; st.step = mb_longAgo(t);
+  }
+  const changePaletteMs = 4000 + sp.sx * 10;
+  if (((t - st.step) >>> 0) > changePaletteMs) {
+    st.step = t >>> 0;
+    const baseI = rnd(256), minBri = ginv8(128);
+    st.p1 = mb_pal4(hsvRainbow((baseI + mb_r8(64)) & 255, 255, mb_r8r(minBri, 255)), hsvRainbow((baseI + 128) & 255, 255, mb_r8r(minBri, 255)),
+                    hsvRainbow((baseI + mb_r8(92)) & 255, 192, mb_r8r(minBri, 255)), hsvRainbow((baseI + mb_r8(92)) & 255, 255, mb_r8r(minBri, 255)));
+  }
+  mb_nblendPal(st.p0, st.p1, 48);                                 // blend towards the target palette
+  if (sp.pal > 0) st.p0 = curPal(s).map(e => [e[0] | 0, e[1] | 0, e[2] | 0, 0]);
+  for (let i = 0; i < s.L; i++) {
+    const index = perlin8((i * scale) & 0xFFFF, (st.aux0 + i * scale) & 0xFFFF);
+    put(s, i, mb_CFP(st.p0, index, 255, 1));
+  }
+  st.aux0 = (st.aux0 + bs8(t, 10, 1, 4)) & 0xFFFF;
+});
+
+// 108 Sine
+add(108, 'Sine@!,Scale;;!', (s, t) => {
+  const sp = s.sp, st = s.st; if (st.step === undefined) st.step = 0;
+  const colorIndex = Math.floor((t >>> 0) / 32);
+  st.step = (st.step + (sp.sx >> 4)) >>> 0;
+  const freq = sp.ix >> 2;
+  for (let i = 0; i < s.L; i++) {
+    const pixBri = cubicwave8((i * freq + st.step) & 255);
+    put(s, i, mb_blend(sp.col[1], mb_cfp(s, Math.floor((Math.imul(i, colorIndex) >>> 0) / 255), false, false, 0), pixBri));
+  }
+});
+
+// 113 Washing Machine
+function mb_tristate8(x, pulsewidth, attdec) {                    // tristate_square8()
+  x &= 255; let a = 127; if (x > 127) { a = -127; x -= 127; }
+  if (x < attdec) return Math.trunc(x * a / attdec);
+  if (x < pulsewidth - attdec) return a;
+  if (x < pulsewidth) return Math.trunc((pulsewidth - x) * a / attdec);
+  return 0;
+}
+add(113, 'Washing Machine@!,!;;!', (s, t) => {
+  const sp = s.sp, st = s.st; if (st.step === undefined) st.step = 0;
+  const speed = mb_tristate8((t >>> 7) & 255, 90, 15);
+  st.step = (st.step + Math.trunc(speed * 2048 / (512 - sp.sx))) >>> 0;
+  const k = Math.floor(sp.ix / 25) + 1;
+  for (let i = 0; i < s.L; i++) {
+    const col = sin8w((Math.floor(k * 255 * i / s.L) + (st.step >>> 7)) & 255);
+    put(s, i, mb_cfp(s, col, false, false, 3));
+  }
+});
+
+/* ================= more 2D effects (WLED 16, FX.cpp) ================= */
+// palettes used as effect defaults: id N >= 13 is gGradientPalettes[N - 13], name is JSON_palette_names[N]
+// loaded like WLED 16's CRGBPalette16::loadDynamicGradientPalette / fill_gradient_RGB (16.16 fixed point)
+function m2_gradTo16(g) {
+  const e = new Array(16).fill(null).map(() => [0, 0, 0, 0]), count = g.length / 4;
+  let last = -1, k = 0, start = [g[1], g[2], g[3]], istart = 0;
+  while (istart < 255) {
+    k++; const iend = g[k * 4], end = [g[k * 4 + 1], g[k * 4 + 2], g[k * 4 + 3]];
+    let s8 = istart >> 4, e8 = iend >> 4;
+    if (count < 16) { if (s8 <= last && last < 15) { s8 = last + 1; if (e8 < s8) e8 = s8; } last = e8; }
+    let a = s8, b = e8, ca = start, cb = end;
+    if (b < a) { [a, b] = [b, a]; [ca, cb] = [cb, ca]; }
+    const div = (b - a) || 1, d = [0, 1, 2].map(c => Math.trunc(((cb[c] - ca[c]) * 65536) / div)), acc = [0, 1, 2].map(c => ca[c] * 65536);
+    for (let i = a; i <= b; i++) { e[i] = [acc[0] >> 16, acc[1] >> 16, acc[2] >> 16, 0]; for (let c = 0; c < 3; c++) acc[c] += d[c]; }
+    istart = iend; start = end;
+  }
+  return e;
+}
+GRAD[54] = [0,20,92,171, 14,15,111,186, 28,6,142,211, 42,2,161,227, 56,16,181,239, 70,38,188,201, 84,86,204,200, 99,139,219,176,   // Temperature
+            113,182,229,125, 127,196,230,63, 141,241,240,22, 155,254,222,30, 170,251,199,4, 184,247,157,9, 198,243,114,15, 226,213,30,29, 240,151,38,35, 255,151,38,35];
+GRAD[66] = [0,0,0,0, 99,242,12,8, 130,253,228,163, 155,242,12,8, 255,0,0,0];                                                              // Red Flash
+GRAD[71] = [0,0,0,0, 85,0,255,0, 170,255,255,0, 255,255,0,0];                                                                            // Traffic Light
+for (const id of [54, 66, 71]) { P16[id] = m2_gradTo16(GRAD[id]); if (!PAL_IDS.includes(id)) PAL_IDS.push(id); }
+PAL_IDS.sort((a, b) => a - b);
+Object.assign(PAL_NAMES, { 54: 'Temperature', 66: 'Red Flash', 71: 'Traffic Light' });
+
+// ---- C number semantics ----
+const m2_F = Math.fround;                                                 // float (ESP32 single precision)
+const m2_DEG = 0.017453292519943295769236907684886;                       // DEG_TO_RAD (a double, as in Arduino's radians())
+const m2_SINK = Math.fround(0xFFFF / (2 * Math.PI));                      // (float)(0xFFFF / M_TWOPI)
+const m2_i32 = v => { v = Math.trunc(v); return v > 2147483647 ? 2147483647 : v < -2147483648 ? -2147483648 : (v || 0); };   // (int)float
+const m2_f2u = v => m2_i32(v) >>> 0;                                      // float -> unsigned via int (wraps like on ESP32)
+const m2_i16 = v => (v << 16) >> 16;
+const m2_i8 = v => (v << 24) >> 24;
+const m2_roundf = v => v < 0 ? -Math.round(-v) : Math.round(v);
+const m2_mapf = (x, a, b, c, d) => m2_F(m2_F(m2_F(m2_F(x - a) * m2_F(d - c)) / m2_F(b - a)) + c);
+const m2_qsub8 = (a, b) => Math.max(0, a - b);
+const m2_lerp16by8 = (a, b, f) => a + (((b - a) * (f + 1)) >> 8);
+// sin_approx / cos_approx from wled_math.cpp (sin_t / cos_t)
+const m2_sinA = th => m2_F(sin16(m2_i32(m2_F(m2_F(th) * m2_SINK)) & 0xFFFF) / 32767);
+const m2_cosA = th => m2_F(sin16(((m2_i32(m2_F(m2_F(th) * m2_SINK)) & 0xFFFF) + 0x4000) & 0xFFFF) / 32767);
+// hw_random8 / hw_random16 / hw_random with their integer rounding
+const m2_r8 = () => rnd(256);
+const m2_r8n = n => ((Math.imul(m2_r8(), n >>> 0) >>> 0) >>> 8) & 255;                 // hw_random8(upper)
+const m2_r8r = (lo, hi) => (lo + m2_r8n((hi - lo) >>> 0)) & 255;                        // hw_random8(lower, upper)
+const m2_r32 = () => Math.floor(Math.random() * 4294967296) >>> 0;
+const m2_FRAMETIME = 23;                                                  // FRAMETIME = 1000 / WLED_FPS (42)
+const m2_DSG = [0x2F, 0x4F, 0x4F, 0];                                     // DARKSLATEGRAY
+// FX_FALLBACK_STATIC when !SEGMENT.is2D() (width or height 1): mode_static fills the segment with colour 1 (Fx)
+const m2_not2D = s => { if (s.W > 1 && s.H > 1) return false; fill(s, s.sp.col[0]); return true; };
+
+// ---- colours, integer exact like colors.cpp ----
+// ColorFromPalette(pal, index, brightness, blendType): 0 NOBLEND, 1 LINEARBLEND, 2 LINEARBLEND_NOWRAP
+function m2_CFP(p, index, bri = 255, blend = 1) {
+  index >>>= 0; if (blend === 2) index = (Math.imul(index, 0xF0) >>> 0) >>> 8;
+  const hi = (index & 255) >> 4, lo = index & 15, e = p[hi]; let r = e[0], g = e[1], b = e[2];
+  if (lo && blend) { const n = p[hi === 15 ? 0 : hi + 1], f2 = lo << 4, f1 = 256 - f2; r = (r * f1 + n[0] * f2) >> 8; g = (g * f1 + n[1] * f2) >> 8; b = (b * f1 + n[2] * f2) >> 8; }
+  if (bri < 255) { const k = bri + 1; r = (r * k) >> 8; g = (g * k) >> 8; b = (b * k) >> 8; }
+  return [r, g, b, 0];
+}
+// color_fade(c, amount, true) ("video" fade)
+function m2_fadeV(c, amt) {
+  const r = c[0], g = c[1], b = c[2], w = c[3] || 0;
+  if (!r && !g && !b && !w) return [0, 0, 0, 0]; if (amt === 255) return [r, g, b, w]; if (amt === 0) return [0, 0, 0, 0];
+  const thr = (Math.max(r, g, b) >> 1) + 1, f = v => ((v * amt) >> 8) + (v >= thr ? 1 : 0);
+  return [f(r), f(g), f(b), f(w)];
+}
+// color_blend(c1, c2, blend)
+const m2_blend = (a, b, k) => [0, 1, 2, 3].map(i => ((a[i] || 0) * (256 - k) + (b[i] || 0) * (k + 1)) >> 8);
+const m2_eq = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && (a[3] || 0) === (b[3] || 0);
+// Segment::color_from_palette(i, mapping, moving, mcol, pbri) with paletteBlend 0
+function m2_cfp(s, i, mapping, moving, mcol = 0, pbri = 255) {
+  const sp = s.sp, col = sp.col[mcol < 3 ? mcol : 0];
+  if (!sp.pal && mcol < 3) return m2_fadeV(col, pbri);
+  let idx = i & 0xFFFF; if (mapping) idx = Math.min(Math.floor(idx * 255 / s.L), 255);
+  const c = m2_CFP(curPal(s), idx, pbri, moving ? 1 : 2); c[3] = col[3] || 0; return c;
+}
+// HeatColor from fastled_slim.cpp
+function m2_heat(t) {
+  const t192 = ((t * 191) >> 8) + (t ? 1 : 0), ramp = (t192 & 0x3F) << 2;
+  if (t192 & 0x80) return [255, 255, ramp, 0]; if (t192 & 0x40) return [255, ramp, 0, 0]; return [ramp, 0, 0, 0];
+}
+// hue of rgb2hsv(CRGB) as CHSV (8 bit)
+function m2_hue8(r, g, b) {
+  const mx = Math.max(r, g, b); if (!mx) return 0; const d = mx - Math.min(r, g, b); if (!d) return 0;
+  const h = mx === r ? Math.trunc(10923 * (g - b) / d) : mx === g ? 21845 + Math.trunc(10923 * (b - r) / d) : 43690 + Math.trunc(10923 * (r - g) / d);
+  return (h & 0xFFFF) >> 8;
+}
+// perlin16(x, y, z) from util.cpp (no 8-bit wrap of the lattice like perlin8)
+function m2_perlin16_3(x, y, z) {
+  const x0 = x >>> 16, y0 = y >>> 16, z0 = z >>> 16, x1 = x0 + 1, y1 = y0 + 1, z1 = z0 + 1;
+  const dx0 = x & 0xFFFF, dy0 = y & 0xFFFF, dz0 = z & 0xFFFF, dx1 = dx0 - 0x10000, dy1 = dy0 - 0x10000, dz1 = dz0 - 0x10000;
+  const tx = smoothstep(dx0), ty = smoothstep(dy0), tz = smoothstep(dz0);
+  const nx0 = lerpP(grad3(x0, dx0, y0, dy0, z0, dz0), grad3(x1, dx1, y0, dy0, z0, dz0), tx);
+  const nx1 = lerpP(grad3(x0, dx0, y1, dy1, z0, dz0), grad3(x1, dx1, y1, dy1, z0, dz0), tx);
+  const nx2 = lerpP(grad3(x0, dx0, y0, dy0, z1, dz1), grad3(x1, dx1, y0, dy0, z1, dz1), tx);
+  const nx3 = lerpP(grad3(x0, dx0, y1, dy1, z1, dz1), grad3(x1, dx1, y1, dy1, z1, dz1), tx);
+  return (((lerpP(lerpP(nx0, nx1, ty), lerpP(nx2, nx3, ty), tz) * 1731) >> 10) + 33147) & 0xFFFF;
+}
+
+// ---- 2D pixel helpers (FX.h / FX_2Dfcn.cpp) ----
+// fadePixelColorXY(x, y, fade): colour_fade video
+function m2_fadeXY(s, x, y, amt) { x &= 0xFFFF; y &= 0xFFFF; if (x >= s.W || y >= s.H) return; putXY(s, x, y, m2_fadeV(getPx(s, y * s.W + x), amt & 255)); }
+// wu_pixel(x, y, CRGB c): x, y in 1/256 pixel
+function m2_wu(s, x, y, c) {
+  x >>>= 0; y >>>= 0; const xx = x & 255, yy = y & 255, ix = 255 - xx, iy = 255 - yy, p = s.px;
+  const WW = (a, b) => ((a * b + a + b) >> 8) & 255, wu = [WW(ix, iy), WW(xx, iy), WW(ix, yy), WW(xx, yy)];
+  for (let i = 0; i < 4; i++) {
+    const wx = (x >>> 8) + (i & 1), wy = (y >>> 8) + ((i >> 1) & 1); if (wx >= s.W || wy >= s.H) continue;
+    const o = (wy * s.W + wx) * 4, r = Math.min(255, p[o] + ((c[0] * wu[i]) >> 8)), g = Math.min(255, p[o + 1] + ((c[1] * wu[i]) >> 8)), b = Math.min(255, p[o + 2] + ((c[2] * wu[i]) >> 8));
+    if (r !== p[o] || g !== p[o + 1] || b !== p[o + 2]) { p[o] = r; p[o + 1] = g; p[o + 2] = b; p[o + 3] = 0; }   // set as CRGB: white is dropped
+  }
+}
+// moveX / moveY / move(dir, delta, wrap)
+function m2_moveAxis(s, delta, wrap, alongX) {
+  const n = alongX ? s.W : s.H, m = alongX ? s.H : s.W, p = s.px, ad = Math.abs(delta); if (!delta || ad >= n) return;
+  let nd, stop = n, start = 0;
+  if (wrap) nd = (delta + n) % n; else { if (delta < 0) start = ad; stop = n - ad; nd = delta > 0 ? delta : 0; }
+  const at = alongX ? (a, b) => (b * s.W + a) * 4 : (a, b) => (a * s.W + b) * 4, tmp = new Float32Array(stop * 4);
+  for (let b = 0; b < m; b++) {
+    for (let a = 0; a < stop; a++) { let src = a + nd; if (wrap) src %= n; const o = at(src, b); tmp[a * 4] = p[o]; tmp[a * 4 + 1] = p[o + 1]; tmp[a * 4 + 2] = p[o + 2]; tmp[a * 4 + 3] = p[o + 3]; }
+    for (let a = 0; a < stop; a++) { const o = at(a + start, b); p[o] = tmp[a * 4]; p[o + 1] = tmp[a * 4 + 1]; p[o + 2] = tmp[a * 4 + 2]; p[o + 3] = tmp[a * 4 + 3]; }
+  }
+}
+function m2_move(s, dir, delta, wrap = false) {
+  if (!delta) return; const X = d => m2_moveAxis(s, d, wrap, true), Y = d => m2_moveAxis(s, d, wrap, false);
+  switch (dir) { case 0: X(delta); break; case 1: X(delta); Y(delta); break; case 2: Y(delta); break; case 3: X(-delta); Y(delta); break;
+    case 4: X(-delta); break; case 5: X(-delta); Y(-delta); break; case 6: Y(-delta); break; case 7: X(delta); Y(-delta); break; }
+}
+// Segment::blur2D, bit exact: color_add(a, b, false) saturates a channel to 0x1FF and the 9th bit leaks into the
+// next channel's lowest bit (R overflow -> W |= 1, G overflow -> R |= 1, B overflow -> G |= 1); this shows with smear
+function m2_addSatAt(p, o, r, g, b, w, R, G, B, X) {
+  let x = r + R, y = g + G, z = b + B, u = w + X;
+  if (x > 255) x |= 255; if (y > 255) y |= 255; if (z > 255) z |= 255; if (u > 255) u |= 255;
+  p[o] = (x & 255) | (y >> 8); p[o + 1] = (y & 255) | (z >> 8); p[o + 2] = z & 255; p[o + 3] = (u & 255) | (x >> 8);
+}
+function m2_blur2d(s, bx, by, smear) {
+  const W = s.W, H = s.H, p = s.px;
+  const pass = (amt, n, m, at) => {
+    amt &= 255; if (!amt) return; const keep = smear ? 255 : 255 - amt, seep = amt >> 1;
+    for (let l = 0; l < m; l++) {
+      let o = at(0, l) * 4, k0 = (p[o] * seep) >> 8, k1 = (p[o + 1] * seep) >> 8, k2 = (p[o + 2] * seep) >> 8, k3 = (p[o + 3] * seep) >> 8;
+      p[o] = (p[o] * keep) >> 8; p[o + 1] = (p[o + 1] * keep) >> 8; p[o + 2] = (p[o + 2] * keep) >> 8; p[o + 3] = (p[o + 3] * keep) >> 8;
+      for (let a = 1; a < n; a++) {
+        const q = at(a, l) * 4, v0 = p[q], v1 = p[q + 1], v2 = p[q + 2], v3 = p[q + 3];
+        const t0 = (v0 * seep) >> 8, t1 = (v1 * seep) >> 8, t2 = (v2 * seep) >> 8, t3 = (v3 * seep) >> 8;
+        m2_addSatAt(p, q, (v0 * keep) >> 8, (v1 * keep) >> 8, (v2 * keep) >> 8, (v3 * keep) >> 8, k0, k1, k2, k3);   // current pixel
+        m2_addSatAt(p, o, p[o], p[o + 1], p[o + 2], p[o + 3], t0, t1, t2, t3);                                           // previous pixel
+        k0 = t0; k1 = t1; k2 = t2; k3 = t3; o = q;
+      }
+    }
+  };
+  pass(bx, W, H, (a, l) => l * W + a);                                  // rows
+  pass(by, H, W, (a, l) => a * W + l);                                  // columns
+}
+const m2_blur = (s, amt, smear = false) => m2_blur2d(s, amt, amt, smear);   // Segment::blur on a 2D segment
+// fillCircle(cx, cy, radius, col, soft = false)
+function m2_fillCircle(s, cx, cy, radius, c) {
+  if (!radius) return; const r2 = radius * radius + radius;
+  for (let y = -radius; y <= radius; y++) for (let x = -radius; x <= radius; x++)
+    if (x * x + y * y < r2 && cx + x >= 0 && cy + y >= 0 && cx + x < s.W && cy + y < s.H) putXY(s, cx + x, cy + y, c);
+}
+// FastLED-style PRNG from prng.h (used by Crazy Bees)
+function m2_prng(seed) {
+  const g = { s: seed & 0xFFFF };
+  g.r16 = () => { let v = (Math.imul(g.s, 3001) + 31683) & 0xFFFF; v ^= v >> 7; g.s = v; return v; };
+  g.r16r = (lo, lim) => (Math.floor(g.r16() * ((lim - lo) & 0xFFFF) / 65536) + lo) & 0xFFFF;
+  g.r8 = () => g.r16() & 255;
+  return g;
+}
+
+// ---- effects ----
+add(164, 'Drift@Rotation speed,Blur,,,,Twin,Smear;;!;2;ix=0', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, W = s.W, H = s.H, p = curPal(s), F = m2_F;
+  const cx = (W >> 1) + (W % 2), cy = (H >> 1) + (H % 2);
+  fadeToBlackBy(s, 128);
+  const maxDim = F(Math.max(W, H) >> 1), tt = Math.floor(t / (32 - (sp.sx >> 3))) >>> 0, t20 = F(Math.floor(tt / 20)), tf = F(tt);
+  for (let i = 1; i < maxDim; i += 0.25) {
+    const angle = F(F(tf * F(maxDim - i)) * m2_DEG), mySin = m2_i32(F(m2_sinA(angle) * i)), myCos = m2_i32(F(m2_cosA(angle) * i));
+    const c = m2_CFP(p, m2_f2u(F(F(i * 20) + t20)), 255, 1);
+    putXY(s, cx + mySin, cy + myCos, c);
+    if (sp.o1) putXY(s, cx + myCos, cy + mySin, c);
+  }
+  m2_blur(s, sp.ix >> (3 - (sp.o2 ? 1 : 0)), sp.o2);
+});
+
+add(182, 'DNA Spiral@Scroll speed,Y frequency,Blur,,,Smear;;!;2;c1=0', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, p = curPal(s);
+  if (!st.init) { fill(s, BLACK); st.init = true; }
+  const speeds = (sp.sx >> 1) + 7, freq = sp.ix >> 3, ms = Math.floor(t / 20);
+  fadeToBlackBy(s, 135);
+  for (let i = 0; i < H; i++) {
+    let x = bs8(t, speeds, 0, W - 1, i * freq) + bs8(t, speeds - 7, 0, W - 1, i * freq + 128);
+    let x1 = bs8(t, speeds, 0, W - 1, 128 + i * freq) + bs8(t, speeds - 7, 0, W - 1, 128 + 64 + i * freq);
+    const hue = Math.floor(i * 128 / H) + ms;
+    if ((i + Math.floor(ms / 8)) & 3) {                                  // skip every 4th row every now and then
+      x >>= 1; x1 >>= 1;
+      const steps = Math.abs(x - x1) + 1, pos = x1 >= x, c = m2_CFP(p, hue, 255, 1);
+      for (let k = 1; k <= steps; k++) { const rate = Math.floor(k * 255 / steps), dx = pos ? x + k - 1 : x - k + 1; addXY(s, dx, i, c); m2_fadeXY(s, dx, i, rate); }
+      putXY(s, x, i, m2_DSG); putXY(s, x1, i, WHITE);
+    }
+  }
+  m2_blur(s, Math.floor(sp.c1 * 3 / (6 + (sp.o1 ? 1 : 0))), sp.o1);
+});
+
+add(124, 'Distortion Waves@!,Scale,,,,Fill,Zoom,Alt;;!;2;pal=0', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, W = s.W, H = s.H, p = curPal(s), cos8 = cos8w;
+  const speed = sp.sx >> 5; let scale = sp.ix >> 5; if (sp.o2) scale = (scale + Math.floor(192 / (W + H))) & 255;
+  const a = Math.floor(t / 32) >>> 0, a2 = Math.floor(a / 2), a3 = Math.floor(a / 3), cw = W * scale, ch = H * scale;
+  const cx = beatsin16(10 - speed, 0, cw, t), cy = beatsin16(12 - speed, 0, ch, t), cx1 = beatsin16(13 - speed, 0, cw, t);
+  const cy1 = beatsin16(15 - speed, 0, ch, t), cx2 = beatsin16(17 - speed, 0, cw, t), cy2 = beatsin16(14 - speed, 0, ch, t);
+  const d2 = (xo, yo, ax, ay) => ((xo - ax) * (xo - ax) + (yo - ay) * (yo - ay)) >>> 7;  // uint32 maths
+  let xoffs = 0;
+  for (let x = 0; x < W; x++) {
+    xoffs += scale; let yoffs = 0;
+    for (let y = 0; y < H; y++) {
+      yoffs += scale; let rd, gd, bd;
+      if (sp.o3) { rd = cos8(((x + y) * 8 + a2) & 255) >> 1; gd = cos8(((x + y) * 8 + a3 + 32) & 255) >> 1; bd = cos8(((x + y) * 8 + a + 64) & 255) >> 1; }
+      else {
+        rd = cos8((cos8(((x << 3) + a) & 255) + cos8(((y << 3) - a2) & 255) + a3) & 255) >> 1;
+        gd = cos8((cos8(((x << 3) - a2) & 255) + cos8(((y << 3) + a3) & 255) + a + 32) & 255) >> 1;
+        bd = cos8((cos8(((x << 3) + a3) & 255) + cos8(((y << 3) - a) & 255) + a2 + 64) & 255) >> 1;
+      }
+      const vR = cos8((rd + 2 * (a - d2(xoffs, yoffs, cx, cy))) & 255), vG = cos8((gd + 2 * (a2 - d2(xoffs, yoffs, cx1, cy1))) & 255), vB = cos8((bd + 2 * (a3 - d2(xoffs, yoffs, cx2, cy2))) & 255);
+      if (!sp.pal) putXY(s, x, y, [vR, vG, vB, 0]);                      // original RGB colours
+      else {
+        const bri = Math.floor((vR + vG + vB) / 3);
+        putXY(s, x, y, sp.o1 ? m2_CFP(p, bri, 255, 2) : m2_CFP(p, m2_hue8(vR >> 2, vG >> 2, vB >> 2), bri, 1));
+      }
+    }
+  }
+  if (!sp.o1 && sp.pal) m2_blur(s, 200, true);
+});
+
+add(174, 'Polar Lights@!,Scale,,,,Flip Palette;;!;2;pal=71', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, rows2 = (H + 1) >> 1;
+  if (!st.init) { fill(s, BLACK); st.step = 0; st.init = true; }
+  const adjH = H > 32 ? m2_F(384 / H) : m2_mapf(Math.max(H, 8), 8, 32, 28, 12), adjH256 = m2_f2u(m2_F(adjH * 256));
+  let adjScale = W > 64 ? Math.floor(7168 / W) : map(Math.max(W, 8), 8, 64, 310, 63); adjScale = Math.min(Math.max(adjScale, 31), 310);
+  const rowScale = map(sp.ix, 0, 255, H <= 48 ? 30 : 18, adjScale), speedScale = map(sp.sx, 0, 255, W <= 48 ? 128 : 196, 16);
+  let pc = st.step;
+  for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
+    pc = (pc + 1) >>> 0;
+    let pi = m2_qsub8(perlin8_3((pc % 2) + x * rowScale, y * 16 + pc % 16, Math.floor(pc / speedScale)), ((Math.abs(rows2 - y) * adjH256) >>> 8) & 255);
+    const pb = pi; if (sp.o1) pi = 255 - pi;                            // flip palette
+    putXY(s, x, y, m2_cfp(s, pi, false, false, 255, pb));
+  }
+  st.step = (st.step + Math.min(768, W * H)) >>> 0;
+});
+
+const m2_FIREPAL = HX([0x000000, 0x000000, 0x000000, 0x000000, 0xFF0000, 0xFF0000, 0xFF0000, 0xFF8C00,
+                       0xFF8C00, 0xFF8C00, 0xFFA500, 0xFFA500, 0xFFFF00, 0xFFA500, 0xFFFF00, 0xFFFF00]);
+add(149, 'Firenoise@X scale,Y scale,,,,Palette;;!;2;pal=66', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H;
+  if (!st.init) { fill(s, BLACK); st.init = true; }
+  const xscale = sp.ix * 4, yscale = sp.sx * 8, p = sp.o1 ? curPal(s) : m2_FIREPAL, tq = Math.floor(t / 4);
+  for (let j = 0; j < W; j++) for (let i = 0; i < H; i++) {
+    const idx = perlin8(Math.floor(j * yscale * H / 255), i * xscale + tq);
+    putXY(s, j, i, m2_CFP(p, Math.min(Math.floor(i * idx / 11), 225), Math.floor(i * 255 / H), 1));
+  }
+});
+
+add(166, 'Sun Radiation@Variance,Brightness;;;2', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, minSize = Math.min(W, H), stride = W + 2;
+  const magnify = minSize <= 32 ? 8 : minSize < 64 ? 46 : 56, down = minSize > 42 ? (minSize > 63 ? 2 : 3) : 4;
+  if (!st.bump) st.bump = new Int8Array(stride * (H + 2));
+  if (!st.init) { fill(s, BLACK); st.init = true; }
+  const bump = st.bump, tq = Math.floor(t / 4), some = sp.sx >> 2; let index = 0;
+  for (let j = 0; j < H + 2; j++) for (let i = 0; i < stride; i++) bump[index++] = Math.trunc((perlin8_3(i * some, j * some, tq) - 127) / down);
+  const div = m2_F(3 - m2_F(sp.ix / 128));
+  let yindex = W + 3, vly = -((H >> 1) + 1);
+  for (let y = 0; y < H; y++) {
+    ++vly; let vlx = -((W >> 1) + 1);
+    for (let x = 0; x < W; x++) {
+      ++vlx;
+      const nx = bump[x + yindex + 1] - bump[x + yindex - 1], ny = bump[x + yindex + stride] - bump[x + yindex - stride];
+      const difx = Math.min(Math.abs(vlx * 7 - nx), 255), dify = Math.min(Math.abs(vly * 7 - ny), 255);
+      let col = 255 - Math.floor((difx * difx + dify * dify) / magnify); if (col < 0) col = 0;
+      putXY(s, x, y, m2_heat(m2_i32(m2_F(col / div)) & 255));
+    }
+    yindex += stride;
+  }
+});
+
+add(167, 'Colored Bursts@Speed,# of lines,,,Blur,Gradient,Smear,Dots;;!;2;c3=16', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = Math.min(s.W, 256), H = Math.min(s.H, 256), p = curPal(s);
+  if (!st.init) { st.aux0 = 0; st.init = true; }
+  const numLines = (sp.ix >> 4) + 1, b = sp.sx >> 4;
+  st.aux0 = (st.aux0 + 1) & 0xFFFF;                                     // hue
+  fadeToBlackBy(s, 40 - (sp.o2 ? 8 : 0));
+  for (let i = 0; i < numLines; i++) {
+    const x1 = bs8(t, 2 + b, 0, W - 1), x2 = bs8(t, 1 + b, 0, H - 1), y1 = bs8(t, 5 + b, 0, W - 1, i * 24), y2 = bs8(t, 3 + b, 0, H - 1, i * 48 + 64);
+    const c = m2_CFP(p, Math.floor(i * 255 / numLines) + (st.aux0 & 255), 255, 1);
+    const xs = Math.abs(x1 - y1) + 1, ys = Math.abs(x2 - y2) + 1, steps = xs >= ys ? xs : ys;
+    for (let j = 1; j <= steps; j++) {                                  // gradient line
+      const rate = Math.floor(j * 255 / steps), dx = m2_lerp16by8(x1, y1, rate), dy = m2_lerp16by8(x2, y2, rate);
+      addXY(s, dx, dy, c); if (sp.o1) m2_fadeXY(s, dx, dy, rate);
+    }
+    if (sp.o3) { putXY(s, x1, x2, WHITE); putXY(s, y1, y2, m2_DSG); }  // dots at the ends
+  }
+  m2_blur(s, sp.c3 >> 1, sp.o2);
+});
+
+// cell bits: 1 alive, 2 faded, 4 toggleStatus, 8 edgeCell, 16 oscillatorCheck, 32 spaceshipCheck
+add(172, 'Game Of Life@!,,Blur,,,,,Mutation;!,!;!;2;pal=11,sx=128', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, n = W * H;
+  if (!st.cells) { st.cells = new Uint8Array(n); st.aux0 = 0; st.aux1 = 0; st.step = 0; }
+  const cells = st.cells, mutate = sp.o3, blurA = map(sp.c1, 0, 255, 255, 4) & 255, bg = sp.col[1];
+  let birth = m2_cfp(s, 128, false, false, 255);
+  const setup = !st.init;
+  if (setup) { let a = H, b = W; while (b) { const q = b; b = a % b; a = q; } st.aux1 = ((W * H / a) << 2) & 0xFFFF; st.init = true; }   // LCM(rows, cols) * 4
+  if (Math.abs(t - st.step) > 2000) st.step = 0;                          // timebase jump fix
+  let paused = st.step > t;
+  if ((!paused && st.aux0 === 0) || setup) {                            // new game
+    st.step = (t + 1280) >>> 0; st.aux0 = 1; paused = true; cells.fill(0);
+    for (let i = 0; i < n; i++) {
+      const alive = !m2_r8n(3), x = i % W, y = Math.floor(i / W);
+      cells[i] = (alive ? 1 : 2) | ((x === 0 || x === W - 1 || y === 0 || y === H - 1) ? 8 : 0);
+      put(s, i, alive ? m2_cfp(s, m2_r8(), false, false, 0) : bg);
+    }
+  }
+  if (paused || (((t - st.step) >>> 0) < Math.floor(1000 / map(sp.sx, 0, 255, 1, 42)))) {   // redraw between generations
+    for (let i = n - 1; i >= 0; i--) {
+      if (cells[i] & 1) continue; const cc = getPx(s, i); if (m2_eq(cc, bg)) continue;
+      if (cells[i] & 2) put(s, i, bg);
+      else { let bl = m2_blend(cc, bg, 2); if (m2_eq(bl, cc)) { bl = bg; cells[i] |= 2; } put(s, i, bl); }
+    }
+    return;
+  }
+  const upOsc = st.aux0 % 16 === 0, upShip = st.aux1 && st.aux0 % st.aux1 === 0;
+  let repOsc = true, repShip = true, empty = true, ci = n - 1;
+  for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--, ci--) {
+    let c = cells[ci]; const alive = c & 1;
+    if (alive) empty = false;
+    if (((c >> 4) & 1) !== alive) repOsc = false;
+    if (((c >> 5) & 1) !== alive) repShip = false;
+    if (upOsc) c = (c & ~16) | (alive << 4);
+    if (upShip) c = (c & ~32) | (alive << 5);
+    cells[ci] = c;
+    let nb = 0, ap = 0; const par = [0, 0, 0];
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) if (i || j) {
+      let nX = x + j, nY = y + i;
+      if (c & 8) { nX = (nX + W) % W; nY = (nY + H) % H; }
+      const ni = nX + nY * W, nc = cells[ni];
+      if (nc & 1) { nb++; if (!(nc & 4) && nb < 4) par[ap++] = ni; }
+    }
+    let nColor = null;
+    if (alive && (nb < 2 || nb > 3)) {                                  // loneliness or overpopulation
+      c |= 4; if (blurA === 255) c |= 2;
+      nColor = (c & 2) ? bg : m2_blend(getPx(s, ci), bg, blurA);
+    } else if (!alive) {
+      const roll = mutate ? m2_r8n(128) : 1;
+      if ((nb === 3 && roll) || (mutate && nb === 2 && !roll)) {        // reproduction or mutation
+        c = (c | 4) & ~2;
+        if (ap) birth = getPx(s, par[m2_r8n(ap)]);
+        nColor = birth;
+      } else if (!(c & 2)) {                                            // fade dead cells
+        const cc = getPx(s, ci); let bl = m2_blend(cc, bg, blurA);
+        if (m2_eq(bl, cc)) { bl = bg; c |= 2; }
+        nColor = bl;
+      }
+    }
+    cells[ci] = c;
+    if (nColor) put(s, ci, nColor);
+  }
+  for (let i = n - 1; i >= 0; i--) { const c = cells[i]; cells[i] = (c & ~5) | ((c ^ (c >> 2)) & 1); }
+  if (repOsc || repShip || empty) { st.aux0 = 0; st.step = (st.step + 1024) >>> 0; }
+  else { st.aux0 = (st.aux0 + 1) & 0xFFFF; st.step = t >>> 0; }
+});
+
+function m2_beeAim(b, r, w, h) {
+  b.aimX = r.r16r(0, w); b.aimY = r.r16r(0, h); b.hue = r.r8();
+  b.dX = Math.abs(b.aimX - b.posX); b.dY = Math.abs(b.aimY - b.posY);
+  b.sX = b.posX < b.aimX ? 1 : -1; b.sY = b.posY < b.aimY ? 1 : -1; b.err = m2_i16(b.dX - b.dY);
+}
+add(119, 'Crazy Bees@!,Blur,,,,Smear;;!;2;pal=11,ix=0', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, n = Math.min(8, Math.floor(H * W / 256) + 1);
+  if (!st.bees) {
+    st.prng = m2_prng(t); st.step = (t - 1024) >>> 0;                   // prng.setSeed(strip.now)
+    st.bees = []; for (let i = 0; i < 8; i++) st.bees.push({ posX: 0, posY: 0, aimX: 0, aimY: 0, dX: 0, dY: 0, sX: 0, sY: 0, err: 0, hue: 0 });
+    for (let i = 0; i < n; i++) { const b = st.bees[i]; b.posX = st.prng.r16r(0, W); b.posY = st.prng.r16r(0, H); m2_beeAim(b, st.prng, W, H); }
+  }
+  const wait = Math.floor(m2_FRAMETIME * 16 / ((sp.sx >> 4) + 1));
+  if (((t - st.step) >>> 0) < wait) return;
+  st.step = t >>> 0;
+  fadeToBlackBy(s, 32 + Math.floor((sp.o1 ? sp.ix : 0) / 25));
+  m2_blur(s, Math.floor(sp.ix / (2 + (sp.o1 ? 9 : 0))), sp.o1);
+  for (let i = 0; i < n; i++) {
+    const b = st.bees[i], fc = m2_cfp(s, b.hue, false, true, 255);
+    addXY(s, b.aimX + 1, b.aimY, fc); addXY(s, b.aimX, b.aimY + 1, fc); addXY(s, b.aimX - 1, b.aimY, fc); addXY(s, b.aimX, b.aimY - 1, fc);
+    if (b.posX !== b.aimX || b.posY !== b.aimY) {
+      putXY(s, b.posX, b.posY, hsvRainbow(b.hue, 60, 255));
+      const e2 = b.err * 2;
+      if (e2 > -b.dY) { b.err = m2_i16(b.err - b.dY); b.posX = (b.posX + b.sX) & 0xFFFF; }
+      if (e2 < b.dX) { b.err = m2_i16(b.err + b.dX); b.posY = (b.posY + b.sY) & 0xFFFF; }
+    } else m2_beeAim(b, st.prng, W, H);
+  }
+});
+
+add(120, 'Ghost Rider@Fade rate,Blur;;!;2', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, p = curPal(s), F = m2_F, maxL = Math.min(W + H, 64);
+  if (!st.L) { st.L = { gPosX: 0, gPosY: 0, gAngle: 0, angleSpeed: 0, Vspeed: 0, px: new Uint16Array(64), py: new Uint16Array(64), ang: new Uint16Array(64), time: new Uint16Array(64), reg: new Uint8Array(64) }; st.aux0 = 0; st.aux1 = 0; st.step = 0; }
+  const L = st.L;
+  if (st.aux0 !== W || st.aux1 !== H) {
+    st.aux0 = W; st.aux1 = H; st.step = (t - 1024) >>> 0;
+    L.angleSpeed = m2_i8(m2_r8r(0, 20) - 10); L.gAngle = rnd(65536); L.Vspeed = 5;
+    L.gPosX = m2_i16((W >> 1) * 10); L.gPosY = m2_i16((H >> 1) * 10);
+    for (let i = 0; i < maxL; i++) { L.px[i] = L.gPosX; L.py[i] = L.gPosY + i; L.time[i] = i * 2; L.reg[i] = 0; }
+  }
+  const wait = Math.max(2, Math.floor(1024 / (W + H)));
+  if (((t - st.step) >>> 0) < wait) return;
+  st.step = t >>> 0;
+  fadeToBlackBy(s, (sp.sx >> 2) + 64);
+  m2_wu(s, Math.trunc(L.gPosX * 256 / 10), Math.trunc(L.gPosY * 256 / 10), WHITE);
+  const ga = F(L.gAngle * m2_DEG);
+  L.gPosX = m2_i16(m2_i32(F(L.gPosX + F(L.Vspeed * m2_sinA(ga)))));
+  L.gPosY = m2_i16(m2_i32(F(L.gPosY + F(L.Vspeed * m2_cosA(ga)))));
+  L.gAngle = (L.gAngle + L.angleSpeed) & 0xFFFF;
+  if (L.gPosX < 0) L.gPosX = (W - 1) * 10; if (L.gPosX > (W - 1) * 10) L.gPosX = 0;
+  if (L.gPosY < 0) L.gPosY = (H - 1) * 10; if (L.gPosY > (H - 1) * 10) L.gPosY = 0;
+  for (let i = 0; i < maxL; i++) {
+    L.time[i] = L.time[i] + m2_r8r(5, 20);
+    if (L.time[i] >= 255 || L.px[i] <= 0 || L.px[i] >= (W - 1) * 10 || L.py[i] <= 0 || L.py[i] >= (H - 1) * 10) L.reg[i] = 1;
+    if (L.reg[i]) {
+      L.py[i] = L.gPosY; L.px[i] = L.gPosX; L.ang[i] = L.gAngle + (m2_r8n(20) - 10); L.time[i] = 0; L.reg[i] = 0;
+    } else {
+      const la = F(L.ang[i] * m2_DEG);
+      L.px[i] = m2_i32(F(L.px[i] + F(-7 * m2_sinA(la))));
+      L.py[i] = m2_i32(F(L.py[i] + F(-7 * m2_cosA(la))));
+    }
+    m2_wu(s, Math.trunc(L.px[i] * 256 / 10), Math.trunc(L.py[i] * 256 / 10), m2_CFP(p, 256 - L.time[i], 255, 1));
+  }
+  m2_blur(s, sp.ix >> 3, false);
+});
+
+add(121, 'Blobs@!,# blobs,Blur,Trail;!;!;2;c1=8', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, F = m2_F, amount = (sp.ix >> 5) + 1;
+  if (!st.b) { const f = () => new Float32Array(8); st.b = { x: f(), y: f(), sX: f(), sY: f(), r: f(), grow: new Uint8Array(8), color: new Uint8Array(8) }; st.aux0 = 0; st.aux1 = 0; st.step = 0; }
+  const b = st.b, spd = 256 - sp.sx, F001 = F(0.01), F0005 = F(0.005), F005 = F(0.05), F101 = F(1.01);
+  if (st.aux0 !== W || st.aux1 !== H) {                                 // (re)initialise if size changes
+    st.aux0 = W; st.aux1 = H;
+    for (let i = 0; i < 8; i++) {
+      b.r[i] = m2_r8r(1, W > 8 ? (W >> 2) : 2);
+      b.sX[i] = F(m2_r8r(3, W) / spd); b.sY[i] = F(m2_r8r(3, H) / spd);
+      b.x[i] = m2_r8r(0, W - 1); b.y[i] = m2_r8r(0, H - 1); b.color[i] = m2_r8();
+      b.grow[i] = b.r[i] < 1 ? 1 : 0;
+      if (b.sX[i] === 0) b.sX[i] = 1; if (b.sY[i] === 0) b.sY[i] = 1;
+    }
+  }
+  fadeToBlackBy(s, (sp.c2 >> 3) + 1);
+  for (let i = 0; i < amount; i++) {
+    if (st.step < t) b.color[i] += 4;                                   // slowly change colour
+    const g = F(Math.max(Math.abs(b.sX[i]), Math.abs(b.sY[i])) * F005);
+    if (b.grow[i]) { b.r[i] = F(b.r[i] + g); if (b.r[i] >= Math.min(F(W / 4), 2)) b.grow[i] = 0; }
+    else { b.r[i] = F(b.r[i] - g); if (b.r[i] < 1) b.grow[i] = 1; }
+    const c = m2_cfp(s, b.color[i], false, false, 0);
+    if (b.r[i] > 1) m2_fillCircle(s, m2_f2u(m2_roundf(b.x[i])) & 0xFFFF, m2_f2u(m2_roundf(b.y[i])) & 0xFFFF, m2_f2u(m2_roundf(b.r[i])) & 255, c);
+    else putXY(s, m2_i32(m2_roundf(b.x[i])), m2_i32(m2_roundf(b.y[i])), c);
+    const r = b.r[i];
+    for (const [P, S, N] of [[b.x, b.sX, W], [b.y, b.sY, H]]) {         // move, then bounce
+      const v = P[i];
+      if (F(v + r) >= N - 1) P[i] = F(v + F(S[i] * F(F(F((N - 1) - v) / r) + F0005)));
+      else if (F(v - r) <= 0) P[i] = F(v + F(S[i] * F(F(v / r) + F0005)));
+      else P[i] = F(v + S[i]);
+    }
+    for (const [P, S, N] of [[b.x, b.sX, W], [b.y, b.sY, H]]) {
+      if (P[i] < F001) { S[i] = F(m2_r8r(3, N) / spd); P[i] = F001; }
+      else if (P[i] > F(N - F101)) { S[i] = -F(m2_r8r(3, N) / spd); P[i] = F(N - F101); }
+    }
+  }
+  m2_blur(s, sp.c1 >> 2, false);
+  if (st.step < t) st.step = t + 2000;                                  // change colours every 2 seconds
+});
+
+add(118, 'Spaceships@!,Blur,,,,Smear;;!;2', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, p = curPal(s);
+  if (!st.init) { st.aux0 = 0; st.step = 0; st.init = true; }
+  const tb = Math.floor(t / 4096);                                       // every ~4 s
+  if (tb > st.step) {
+    st.aux0 = (st.aux0 + 1) & 0xFFFF; const dir = st.aux0 + m2_r8n(3) - 1;
+    st.aux0 = dir > 7 ? 0 : dir < 0 ? 7 : dir;
+    st.step = tb + m2_r8n(4);
+  }
+  fadeToBlackBy(s, map(sp.sx, 0, 255, 248, 16));
+  m2_move(s, st.aux0, 1);
+  for (let i = 0; i < 8; i++) {
+    const x = bs8(t, 12 + i, 2, W - 3), y = bs8(t, 15 + i, 2, H - 3), c = m2_CFP(curPal(s), bs8(t, 12 + i, 0, 255), 255, 1);
+    addXY(s, x, y, c);
+    if (W > 24 || H > 24) { addXY(s, x + 1, y, c); addXY(s, x - 1, y, c); addXY(s, x, y + 1, c); addXY(s, x, y - 1, c); }
+  }
+  m2_blur(s, sp.ix >> 3, sp.o1);
+});
+
+add(123, 'Drift Rose@Fade,Blur,,,,Smear;;!;2;pal=11', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, W = s.W, H = s.H, F = m2_F, p = curPal(s);
+  const CX = F(F((W - W % 2) / 2) - F(0.5)), CY = F(F((H - H % 2) / 2) - F(0.5)), L = F(Math.min(W, H) / 2), hi = m2_i32(F(L * 2)) & 255;
+  fadeToBlackBy(s, 32 + (sp.sx >> 3));
+  for (let i = 1; i < 37; i++) {
+    const angle = F(i * 10 * m2_DEG), bv = F(bs8(t, i, 0, hi) - L);
+    const x = m2_f2u(F(F(CX + F(m2_sinA(angle) * bv)) * 255)), y = m2_f2u(F(F(CY + F(m2_cosA(angle) * bv)) * 255));
+    m2_wu(s, x, y, !sp.pal ? hsvRainbow((i * 10) & 255, 255, 255) : m2_CFP(p, i * 10, 255, 1));
+  }
+  m2_blur(s, sp.ix >> 4, sp.o1);
+});
+
+function m2_soapPixels(s, isRow, p) {
+  const W = s.W, H = s.H, st = s.st, noise = st.noise, pix = st.pix, tRC = isRow ? H : W, tCR = isRow ? W : H;
+  const amp = Math.max(1, (tCR - 8) >> 3) * (1 + (s.sp.c1 >> 5)), buf = new Array(tCR);
+  const XY = (i, j) => isRow ? j + i * W : i + j * W;                    // i: row (isRow) or column, j: along it
+  for (let i = 0; i < tRC; i++) {
+    const amount = (noise[isRow ? i * W : i] - 128) * amp, aa = Math.abs(amount), delta = aa >> 8, frac = aa & 255;
+    const ea = ease8InOutCubic(255 - frac) + 1, eb = ease8InOutCubic(frac) + 1;
+    for (let j = 0; j < tCR; j++) {
+      let zD, zF; if (amount < 0) { zD = j - delta; zF = zD - 1; } else { zD = j + delta; zF = zD + 1; }
+      const ia = XY(i, Math.abs(zD) % tCR), ib = XY(i, Math.abs(zF) % tCR);
+      const A = (zD >= 0 && zD < tCR) ? [pix[ia * 3], pix[ia * 3 + 1], pix[ia * 3 + 2]] : m2_CFP(p, (~noise[ia]) * 3, 255, 1);
+      const B = (zF >= 0 && zF < tCR) ? [pix[ib * 3], pix[ib * 3 + 1], pix[ib * 3 + 2]] : m2_CFP(p, (~noise[ib]) * 3, 255, 1);
+      buf[j] = [0, 1, 2].map(k => Math.min(255, ((A[k] * ea) >> 8) + ((B[k] * eb) >> 8)));   // nscale8 + qadd8
+    }
+    for (let j = 0; j < tCR; j++) { const k = XY(i, j), c = buf[j]; pix[k * 3] = c[0]; pix[k * 3 + 1] = c[1]; pix[k * 3 + 2] = c[2]; put(s, k, [c[0], c[1], c[2], 0]); }
+  }
+}
+add(125, 'Soap@!,Smoothness,Density;;!;2;pal=11', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, n = W * H, p = curPal(s);
+  if (!st.noise) { st.noise = new Uint8Array(n); st.pix = new Uint8Array(n * 3); st.nc = new Uint32Array(3); }
+  const sx32 = Math.floor(160000 / W), sy32 = Math.floor(160000 / H), mov = Math.floor(Math.min(W, H) * (sp.sx + 2) / 2), smooth = Math.min(250, sp.ix), nc = st.nc;
+  for (let k = 0; k < 3; k++) nc[k] = st.init ? nc[k] + mov : m2_r32();
+  for (let i = 0; i < W; i++) {
+    const io = sx32 * (i - (W >> 1));
+    for (let j = 0; j < H; j++) {
+      const jo = sy32 * (j - (H >> 1)), data = m2_perlin16_3((nc[0] + io) >>> 0, (nc[1] + jo) >>> 0, nc[2]) >> 8, k = i + j * W;
+      st.noise[k] = scale8(st.noise[k], smooth) + scale8(data, 255 - smooth);
+    }
+  }
+  if (!st.init || st.aux0 !== W || st.aux1 !== H) {
+    st.aux0 = W; st.aux1 = H;
+    for (let i = 0; i < W; i++) for (let j = 0; j < H; j++) putXY(s, i, j, m2_CFP(p, (~st.noise[i + j * W]) * 3, 255, 1));
+  }
+  st.init = true;
+  m2_soapPixels(s, true, p);                                            // rows
+  m2_soapPixels(s, false, p);                                           // columns
+});
+
+add(168, 'Julia@,Max iterations per pixel,X center,Y center,Area size, Blur;!;!;2;ix=24,c1=128,c2=128,c3=16', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, F = m2_F;
+  if (!st.j) { st.j = { xcen: 0, ycen: 0, xymag: 1 }; sp.c1 = 128; sp.c2 = 128; sp.c3 = 16; sp.ix = 24; }   // WLED resets these sliders on (re)start
+  const J = st.j, cl = (v, a, b) => v < a ? a : v > b ? b : v;
+  J.xcen = F(J.xcen + F((sp.c1 - 128) / 100000));
+  J.ycen = F(J.ycen + F((sp.c2 - 128) / 100000));
+  J.xymag = F(J.xymag + F(((sp.c3 - 16) << 3) / 100000));
+  if (J.xymag < F(0.01)) J.xymag = F(0.01); if (J.xymag > 1) J.xymag = 1;
+  const xmin = cl(F(J.xcen - J.xymag), F(-1.2), F(1.2)), xmax = cl(F(J.xcen + J.xymag), F(-1.2), F(1.2));
+  const ymin = cl(F(J.ycen - J.xymag), F(-0.8), 1), ymax = cl(F(J.ycen + J.xymag), F(-0.8), 1);
+  const maxIt = sp.ix >> 1;
+  const reAl = F(F(-0.94299) + F(sin16(Math.imul(t, 34) & 0xFFFF) / 655340)), imAg = F(F(0.3162) + F(sin16(Math.imul(t, 26) & 0xFFFF) / 655340));
+  const dx = F(F(xmax - xmin) / W), dy = F(F(ymax - ymin) / H);
+  let y = ymin;
+  for (let j = 0; j < H; j++) {
+    let x = xmin;
+    for (let i = 0; i < W; i++) {
+      let a = x, b = y, iter = 0;
+      while (iter < maxIt) {                                            // z -> z^2 + c until |z|^2 > 16
+        const aa = F(a * a), bb = F(b * b); if (F(aa + bb) > 16) break;
+        b = F(F(F(2 * a) * b) + imAg); a = F(F(aa - bb) + reAl); iter++;
+      }
+      putXY(s, i, j, iter === maxIt ? BLACK : m2_cfp(s, Math.floor(iter * 255 / maxIt), false, false, 0));
+      x = F(x + dx);
+    }
+    y = F(y + dy);
+  }
+  if (sp.o1) m2_blur(s, 100, true);
+});
+
+add(114, 'Rotozoomer@!,Scale,,,,Alt;;!;2;pal=54', (s, t) => {
+  if (m2_not2D(s)) return;
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, F = m2_F;
+  if (!st.plasma) { st.plasma = new Uint8Array(W * H); st.a = 0; }
+  const ms = Math.floor(t / 15), pl = st.plasma;
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++)
+    pl[j * W + i] = sp.o1 ? (((i * 4) ^ (j * 4)) + Math.floor(ms / 6)) & 255 : perlin8_3(i * 40, j * 40, ms);
+  const a = st.a, f = F(F(F(m2_sinA(F(a / 2)) + F((128 - sp.ix) / 128)) + F(1.1)) / F(1.5));   // scale factor
+  const kos = F(m2_cosA(a) * f), sin = F(m2_sinA(a) * f);
+  for (let i = 0; i < W; i++) {
+    const u1 = F(i * kos), v1 = F(i * sin);
+    for (let j = 0; j < H; j++) {
+      const u = Math.abs(m2_i32(F(u1 - F(j * sin)))) % W, v = Math.abs(m2_i32(F(v1 + F(j * kos)))) % H;
+      putXY(s, i, j, m2_cfp(s, pl[v * W + u], false, false, 255));
+    }
+  }
+  st.a = F(a - F(F(0.03) + F((sp.sx - 128) * F(0.0002))));             // rotation speed
+  if (st.a < F(-6283.18530718)) st.a = F(st.a + F(6283.18530718));
+});
+
+/* ---- Candle Multi exactly like candle(true) in FX.cpp (replaces the earlier approximation) ---- */
+add(102, 'Candle Multi@!,!;!,!;!;;sx=96,ix=224,pal=0', (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L, multi = L > 1;
+  if (st.last === undefined) { st.last = mb_longAgo(t); st.aux0 = 0; st.aux1 = 0; st.step = 0; st.data = new Uint8Array(Math.max(1, L - 1) * 3); }
+  if (((t - st.last) >>> 0) < mb_FRAMETIME_FIXED) return;              // limit update rate
+  st.last = t >>> 0;
+  const valrange = sp.ix, rndval = valrange >> 1, speedFactor = sp.sx > 252 ? 1 : sp.sx > 99 ? 2 : sp.sx > 49 ? 3 : 4;
+  const n = multi ? L : 1, cd = st.data;
+  for (let i = 0; i < n; i++) {
+    const d = (i - 1) * 3;
+    let v = st.aux0, target = st.aux1, fadeStep = st.step;
+    if (i > 0) { v = cd[d]; target = cd[d + 1]; fadeStep = cd[d + 2]; }
+    if (fadeStep === 0) { v = 128; target = 130 + mb_r8(4); fadeStep = 1; }
+    let newTarget = false;
+    if (target > v) { v = mb_qadd8(v, fadeStep); if (v >= target) newTarget = true; }
+    else { v = Math.max(0, v - fadeStep); if (v <= target) newTarget = true; }
+    if (newTarget) {
+      target = mb_r8(rndval) + mb_r8(rndval);
+      if (target < (rndval >> 1)) target = (rndval >> 1) + mb_r8(rndval);
+      target += 255 - valrange;
+      const dif = target > v ? target - v : v - target;
+      fadeStep = dif >> speedFactor; if (fadeStep === 0) fadeStep = 1;
+    }
+    if (i > 0) { put(s, i, mb_blend(sp.col[1], mb_cfp(s, i, true, false, 0), v & 255)); cd[d] = v; cd[d + 1] = target; cd[d + 2] = fadeStep; }
+    else { for (let j = 0; j < L; j++) put(s, j, mb_blend(sp.col[1], mb_cfp(s, j, true, false, 0), v & 255)); st.aux0 = v; st.aux1 = target; st.step = fadeStep; }
+  }
+});
+
 /* ================= metadata (same format as WLED) ================= */
 function parseMeta(meta) {
   const at = meta.indexOf('@'), name = at < 0 ? meta : meta.slice(0, at);
@@ -947,7 +2342,7 @@ function rtFor(s) {
   if (!r || r.shape !== shape || r.sig !== sig) {
     const L = !m2d ? W : d2 ? W * H : vLen(s.m12, W, H);
     r = { shape, sig, L, W: d2 ? W : L, H: d2 ? H : 1, SW: W, SH: H, d2, map: m2d && !d2 ? map1D2D(s.m12, W, H, L) : null,
-          fallback: !m2d && fx.info.only2D, px: new Float32Array(L * 4), st: {}, t: 0, acc: 24, sp: s };
+          fallback: (!m2d && fx.info.only2D) || (d2 && (W < 2 || H < 2)), px: new Float32Array(L * 4), st: {}, t: 0, acc: 24, sp: s };
     runtime.set(s, r);
   }
   return r;
@@ -968,7 +2363,12 @@ const EX = {
   theater: { count: 150, rgbw: true, bri: 180, segs: [[13, 0, 150, { sx: 160, ix: 0, col: [[255, 160, 60, 0], [0, 0, 0, 0]] }]] },
   waves: { count: 300, rgbw: false, bri: 170, segs: [[63, 0, 150, {}], [67, 150, 300, { pal: 26 }]] },
   builtin: { count: 300, rgbw: true, bri: 150, segs: [[85, 0, 100, { sx: 196, ix: 128, col: [[251, 255, 242, 0]] }], [102, 100, 200, { col: [[255, 120, 20, 0]] }], [9, 200, 300, {}]] },
+  pacifica: { count: 150, rgbw: false, bri: 190, segs: [[101, 0, 150, {}]] },
+  aurora: { count: 150, rgbw: false, bri: 190, segs: [[38, 0, 150, {}]] },
+  balls: { count: 120, rgbw: false, bri: 200, segs: [[91, 0, 60, { ix: 128 }], [95, 60, 120, { pal: 6 }]] },
   m_hole: { m2d: true, w: 16, h: 16, rgbw: false, bri: 170, segs: [[183, 0, 16, {}]] },
+  m_life: { m2d: true, w: 32, h: 16, rgbw: false, bri: 170, segs: [[172, 0, 32, {}]] },
+  m_polar: { m2d: true, w: 32, h: 16, rgbw: false, bri: 180, segs: [[174, 0, 32, {}]] },
   m_rain: { m2d: true, w: 32, h: 16, rgbw: false, bri: 170, segs: [[153, 0, 32, { sx: 200, ix: 140 }]] },
   m_mix: { m2d: true, w: 32, h: 16, rgbw: false, bri: 170, segs: [[126, 0, 16, { pal: 6 }], [178, 16, 32, { sx: 200, pal: 9 }]] },
   m_fire: { m2d: true, w: 16, h: 16, rgbw: false, bri: 190, segs: [[66, 0, 16, { pal: 35, m12: 1 }]] },
