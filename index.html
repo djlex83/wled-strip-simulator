@@ -100,6 +100,7 @@ pre{margin:0;padding:10px 12px;background:var(--night);border:1px solid var(--li
     </div>
     <div class="top-actions">
       <a class="btn ghost" href="https://github.com/djlex83/wled-strip-simulator">GitHub</a>
+      <button class="btn primary" id="share" type="button" data-i18n="share"></button>
       <button class="btn" id="lang" type="button"></button>
     </div>
   </header>
@@ -172,6 +173,7 @@ const T = {
     split: 'Split into', splitBtn: 'Split into equal segments', json: 'JSON for WLED',
     exportHint: 'Send it to POST /json/state on your WLED. Effects and palettes carry their WLED numbers.',
     copy: 'Copy', copied: 'Copied.', selected: 'Text is selected, press Ctrl+C or ⌘C.',
+    share: 'Copy link', linkCopied: 'Link copied', linkPrompt: 'Copy this link:', linkBad: 'This link could not be read, the example is shown instead.',
     import: 'Import from WLED', importHint: 'Paste the result of http://<your-wled>/json/state or an entry of presets.json.', apply: 'Apply',
     importOk: 'Applied: {n} segments.', importErr: 'This is not valid JSON: {m}', unknownFx: 'Effects this simulator does not have are shown as Solid: {l}.', unknownPal: 'Palettes it does not have use Default: {l}.', noSegIn: 'No segment with start < stop found.',
     effect: 'Effect', start: 'Start', stop: 'Stop', on: 'On', reverse: 'Reverse', segBri: 'Segment brightness', palette: 'Palette',
@@ -189,6 +191,7 @@ const T = {
     split: 'Teilen in', splitBtn: 'In gleiche Segmente teilen', json: 'JSON für WLED',
     exportHint: 'Per POST an /json/state deiner WLED senden. Effekte und Paletten stehen mit ihrer WLED-Nummer drin.',
     copy: 'Kopieren', copied: 'Kopiert.', selected: 'Text ist markiert, mit Strg+C oder ⌘C kopieren.',
+    share: 'Link kopieren', linkCopied: 'Link kopiert', linkPrompt: 'Diesen Link kopieren:', linkBad: 'Dieser Link ließ sich nicht lesen, stattdessen ist das Beispiel zu sehen.',
     import: 'Aus WLED übernehmen', importHint: 'Inhalt von http://<deine-wled>/json/state oder einen Eintrag aus presets.json einfügen.', apply: 'Übernehmen',
     importOk: 'Übernommen: {n} Segmente.', importErr: 'Das ist kein gültiges JSON: {m}', unknownFx: 'Effekte, die der Simulator nicht kennt, sind als Solid gezeigt: {l}.', unknownPal: 'Paletten, die er nicht kennt, nutzen Default: {l}.', noSegIn: 'Kein Segment mit Start < Stop gefunden.',
     effect: 'Effekt', start: 'Start', stop: 'Stop', on: 'An', reverse: 'Rückwärts', segBri: 'Segment-Helligkeit', palette: 'Palette',
@@ -779,13 +782,15 @@ function draw() {
   segs.forEach((s, si) => {
     if (s.stop <= s.start) return; const col = SEGC[si % SEGC.length], a = Math.max(0, s.start), b = Math.min(n, s.stop); if (b <= a) return;
     ctx.globalAlpha = s.on ? 0.95 : 0.35; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2;
+    let best = null;   // the name goes on the widest piece, so a segment that wraps after a few LEDs keeps its label
     for (let r = Math.floor(a / g.perRow); r <= Math.floor((b - 1) / g.perRow); r++) {
       const i0 = Math.max(a, r * g.perRow), i1 = Math.min(b - 1, (r + 1) * g.perRow - 1), y = g.pad + r * g.rowH + 4;
       const x0 = ledX(i0) - g.pitch / 2 + 1, x1 = ledX(i1) + g.pitch / 2 - 1;
       ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
       ctx.fillRect(x0, y - 3, 2, 7);
-      if (i0 === a) { const label = s.id + ' · ' + FX[s.fx].info.name; if (x1 - x0 > 40) { ctx.save(); ctx.beginPath(); ctx.rect(x0, y + 2, x1 - x0, 12); ctx.clip(); ctx.fillText(label, x0 + 5, y + 8); ctx.restore(); } }
+      if (!best || x1 - x0 > best.w) best = { x0, y, w: x1 - x0 };
     }
+    if (best && best.w > 40) { ctx.save(); ctx.beginPath(); ctx.rect(best.x0, best.y + 2, best.w, 12); ctx.clip(); ctx.fillText(s.id + ' · ' + FX[s.fx].info.name, best.x0 + 5, best.y + 8); ctx.restore(); }
   });
   ctx.globalAlpha = 1;
   // LED bodies
@@ -899,6 +904,7 @@ function updateOut() {
   const lines = ['{', `  "on": true,`, `  "bri": ${strip.bri},`, '  "seg": ['];
   segs.forEach((s, i) => lines.push('    ' + JSON.stringify(segJson(s)) + (i < segs.length - 1 ? ',' : '')));
   lines.push('  ]', '}'); $('out').textContent = lines.join('\n'); $('copyMsg').hidden = true;
+  saveHash();
 }
 
 function renderStrip() {
@@ -952,9 +958,9 @@ function doImport() {
 $('count').addEventListener('change', () => { strip.count = Math.max(1, Math.min(1500, Math.round(+$('count').value) || 1));
   segs.forEach(s => { s.stop = Math.min(s.stop, strip.count); s.start = Math.min(s.start, s.stop - 1); }); segs = segs.filter(s => s.stop > s.start); renumber(); renderAll(); });
 $('rgbw').addEventListener('change', () => { strip.rgbw = $('rgbw').value === '1'; renderAll(); });
-$('perRow').addEventListener('change', () => { strip.perRow = Math.max(0, Math.round(+$('perRow').value) || 0); layout(); drawMeta(); });
+$('perRow').addEventListener('change', () => { strip.perRow = Math.max(0, Math.round(+$('perRow').value) || 0); layout(); drawMeta(); saveHash(); });
 $('bri').addEventListener('input', () => { strip.bri = +$('bri').value; $('briOut').textContent = strip.bri; updateOut(); });
-$('gamma').addEventListener('change', () => { strip.gamma = $('gamma').checked; });
+$('gamma').addEventListener('change', () => { strip.gamma = $('gamma').checked; saveHash(); });
 $('examples').addEventListener('change', () => { if ($('examples').value) loadExample($('examples').value); $('examples').value = ''; });
 $('splitBtn').addEventListener('click', () => {
   const n = Math.max(1, Math.min(32, Math.round(+$('splitN').value) || 1)), keep = segs.slice(); segs = [];
@@ -972,10 +978,48 @@ $('copy').addEventListener('click', () => {
   try { navigator.clipboard.writeText(pre.textContent).then(() => { msg.textContent = t('copied'); msg.hidden = false; }, fallback); } catch (e) { fallback(); }
 });
 $('lang').addEventListener('click', () => { lang = lang === 'de' ? 'en' : 'de'; try { localStorage.setItem('wss-lang', lang); } catch (e) { /* no storage */ } applyTexts(); renderAll(); });
+/* ---- share link: the whole setup in the address (#s=...) ---- */
+const hex2 = v => (Math.max(0, Math.min(255, Math.round(v) || 0))).toString(16).padStart(2, '0');
+const clampInt = (v, lo, hi) => { v = Math.round(+v); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : lo; };
+function encodeState() {
+  const o = [1, strip.count, strip.rgbw ? 1 : 0, strip.bri, strip.perRow, strip.gamma ? 1 : 0,
+    segs.map(x => [x.fx, x.start, x.stop, x.on ? 1 : 0, x.bri, x.sx, x.ix, x.c1, x.c2, x.c3, (x.o1 ? 1 : 0) | (x.o2 ? 2 : 0) | (x.o3 ? 4 : 0), x.pal, x.rev ? 1 : 0,
+      x.col.map(c => hex2(c[0]) + hex2(c[1]) + hex2(c[2]) + hex2(c[3]))])];
+  return btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function decodeState(str) {
+  let o; try { o = JSON.parse(atob(str.replace(/-/g, '+').replace(/_/g, '/'))); } catch (e) { return false; }
+  if (!Array.isArray(o) || o[0] !== 1 || !Array.isArray(o[6])) return false;
+  const n = clampInt(o[1], 1, 1500), list = [];
+  for (const a of o[6].slice(0, 32)) {
+    if (!Array.isArray(a)) continue;
+    const fx = FX[a[0]] ? a[0] : 0, start = clampInt(a[1], 0, n - 1), stop = clampInt(a[2], start + 1, n), x = newSeg(start, stop, fx);
+    x.on = a[3] !== 0; x.bri = clampInt(a[4], 0, 255);
+    for (const [k, i] of [['sx', 5], ['ix', 6], ['c1', 7], ['c2', 8]]) x[k] = clampInt(a[i], 0, 255);
+    x.c3 = clampInt(a[9], 0, 31); const ob = clampInt(a[10], 0, 7); x.o1 = !!(ob & 1); x.o2 = !!(ob & 2); x.o3 = !!(ob & 4);
+    x.pal = PAL_IDS.includes(a[11]) ? a[11] : 0; x.rev = a[12] === 1;
+    if (Array.isArray(a[13])) x.col = [0, 1, 2].map(i => { const h = String(a[13][i] || ''); return /^[0-9a-f]{8}$/i.test(h) ? [0, 2, 4, 6].map(j => parseInt(h.slice(j, j + 2), 16)) : [0, 0, 0, 0]; });
+    list.push(x);
+  }
+  Object.assign(strip, { count: n, rgbw: !!o[2], bri: clampInt(o[3], 0, 255), perRow: clampInt(o[4], 0, 1500), gamma: o[5] !== 0 });
+  segs = list; renumber(); renderAll(); return true;
+}
+let hashTimer = 0, lastHash = '';
+function writeHash() { clearTimeout(hashTimer); const h = '#s=' + encodeState(); if (h === lastHash) return; lastHash = h; try { history.replaceState(null, '', h); } catch (e) { /* e.g. data: URL */ } }
+function saveHash() { clearTimeout(hashTimer); hashTimer = setTimeout(writeHash, 300); }
+function loadHash() { const h = location.hash; if (!h.startsWith('#s=')) return null; lastHash = h; return decodeState(h.slice(3)); }
+window.addEventListener('hashchange', () => { if (location.hash !== lastHash && loadHash() === false) loadExample('tour'); });
+$('share').addEventListener('click', () => {
+  writeHash(); const url = location.href, btn = $('share');
+  const done = () => { btn.textContent = t('linkCopied'); setTimeout(() => { btn.textContent = t('share'); }, 2000); };
+  try { navigator.clipboard.writeText(url).then(done, () => window.prompt(t('linkPrompt'), url)); } catch (e) { window.prompt(t('linkPrompt'), url); }
+});
 let lastW = 0;
 new ResizeObserver(() => { const w = box.clientWidth; if (w === lastW) return; lastW = w; layout(); drawMeta(); }).observe(box);
 
-applyTexts(); loadExample('tour');
+applyTexts();
+const fromLink = loadHash();
+if (!fromLink) { loadExample('tour'); if (fromLink === false) { const m = $('inMsg'); m.hidden = false; m.className = 'msg err'; m.textContent = t('linkBad'); } }
 requestAnimationFrame(x => { last = x; requestAnimationFrame(tick); });
 })();
 </script>

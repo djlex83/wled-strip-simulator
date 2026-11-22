@@ -16,6 +16,8 @@ segments, give each one an effect, a palette and colours, and copy the JSON stra
   preset. Effects and palettes carry their WLED numbers.
 - **Import:** paste the result of `http://<your-wled>/json/state` (or an entry of `presets.json`) to see your current
   setup.
+- **Share:** the whole setup lives in the page address. *Copy link* gives you a link that opens exactly this strip,
+  these segments and these settings, for example to send it to someone or to keep it as a bookmark.
 - **Like the real thing:** effects run at 42 frames per second like WLED, and gamma 2.8 is applied to every pixel like
   in WLED 16. A screen cannot show the brightness of real LEDs, so take the colours as an impression.
 - English and German.
