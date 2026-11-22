@@ -86,6 +86,20 @@ Good to know:
 - On a matrix with *Bar*, WLED runs Bouncing Balls, Popcorn, Drip and Fire 2012 once per column. The simulator runs
   them as one strip spread over the rows.
 
+## Lab effects (not in WLED)
+
+Five effects were invented for this simulator. **WLED does not have them**, so you cannot send them to your WLED.
+They sit in their own group *Lab – only in this simulator, not in WLED* in the effect list, every segment that uses one
+says so, and the JSON sends such a segment as *Solid* (fx 0) with a warning above it.
+
+| Effect | Layout | What it does |
+| :-- | :-- | :-- |
+| Fireflies | Strip | Dots flash out of step and synchronise over about half a minute, like real fireflies (pulse coupling) |
+| Surf | Strip | Waves run up the beach with a foam crest and pull back slowly, every few waves a bigger one; wet sand dries |
+| Neon Tube | Strip | Lights up like a real tube with flickering strikes, then hums and fails now and then |
+| Sand | Matrix | Grains trickle from a wandering spout and slide into dunes; when the pile reaches the spout, the floor opens |
+| Raindrops | Matrix | A wave simulation: drops hit the water, rings spread, bounce off the edges and overlap |
+
 ## Running it locally
 
 [`index.html`](index.html) is the whole simulator: one file with no build step and no external libraries. Open it in

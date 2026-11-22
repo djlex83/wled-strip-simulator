@@ -155,6 +155,7 @@ pre{margin:0;padding:10px 12px;background:var(--night);border:1px solid var(--li
         <h2 id="h-json" data-i18n="json"></h2>
         <p class="hint" data-i18n="exportHint"></p>
         <p class="hint" id="m2dHint" data-i18n="m2dHint" hidden></p>
+        <p class="warn" id="labOut" hidden></p>
         <pre id="out" tabindex="0"></pre>
         <div class="row"><button class="btn small" id="copy" type="button" data-i18n="copy"></button><p class="msg" id="copyMsg" hidden></p></div>
         <span class="lbl" data-i18n="import"></span>
@@ -186,6 +187,8 @@ const T = {
     layout: 'Layout', modeStrip: 'Strip', modeMatrix: 'Matrix (2D)', mw: 'Width', mh: 'Height', startX: 'Start X', stopX: 'Stop X', startY: 'Start Y', stopY: 'Stop Y',
     m12: 'Expand 1D effect', m12n: ['Pixels', 'Bar', 'Arc', 'Corner'], metaM: '{w} × {h} matrix · {c} LEDs · {s} segments',
     m2dHint: 'The matrix size itself is set in WLED under Config → 2D Configuration; the JSON holds the segments with startY, stopY and m12.',
+    labGroup: 'Lab – only in this simulator, not in WLED', labNote: 'Lab effect: it exists only in this simulator, WLED does not have it. The JSON sends this segment as Solid.',
+    labExport: 'Lab effects in segment(s) {l}: WLED does not have them, so the JSON sends these segments as Solid (fx 0).',
     share: 'Copy link', linkCopied: 'Link copied', linkPrompt: 'Copy this link:', linkBad: 'This link could not be read, the example is shown instead.',
     import: 'Import from WLED', importHint: 'Paste the result of http://<your-wled>/json/state or an entry of presets.json.', apply: 'Apply',
     importOk: 'Applied: {n} segments.', importErr: 'This is not valid JSON: {m}', unknownFx: 'Effects this simulator does not have are shown as Solid: {l}.', unknownPal: 'Palettes it does not have use Default: {l}.', noSegIn: 'No segment with start < stop found.',
@@ -194,7 +197,7 @@ const T = {
     builtin: 'WLED effects', approx: 'approx.', ledsShort: 'LEDs', meta: '{c} LEDs · {s} segments · {r} rows',
     langBtn: 'Deutsch', white: 'W',
     foot: 'The effects are re-written in JavaScript after the WLED 16 source code. Rain, Twinklefox and the two fireworks (≈) are approximations, and effects with random parts never repeat exactly. Colours on a screen are an impression, real LEDs are brighter and more saturated. An independent project, not part of WLED.',
-    ex: { tour: 'A tour: six effects', fire: 'Fire 2012 with the Fire palette', scanner: 'Scanner with two dots', theater: 'Theater lights, warm white', waves: 'Pride 2015 and Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', pacifica: 'Pacifica, ocean waves', aurora: 'Aurora', balls: 'Bouncing Balls and Popcorn', m_hole: '2D: Black Hole, 16 × 16', m_life: '2D: Game of Life', m_polar: '2D: Polar Lights', m_rain: '2D: Matrix rain, 32 × 16', m_mix: '2D: Octopus and Plasma Ball', m_fire: '2D: Fire 2012 rising (1D effect as Bar)', m_noise: '2D: Noise2D with the Ocean palette', pick: 'Choose an example…' },
+    ex: { tour: 'A tour: six effects', fire: 'Fire 2012 with the Fire palette', scanner: 'Scanner with two dots', theater: 'Theater lights, warm white', waves: 'Pride 2015 and Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', lab: 'Lab: Fireflies, Surf, Neon Tube (not in WLED)', m_lab: 'Lab 2D: Sand and Raindrops (not in WLED)', pacifica: 'Pacifica, ocean waves', aurora: 'Aurora', balls: 'Bouncing Balls and Popcorn', m_hole: '2D: Black Hole, 16 × 16', m_life: '2D: Game of Life', m_polar: '2D: Polar Lights', m_rain: '2D: Matrix rain, 32 × 16', m_mix: '2D: Octopus and Plasma Ball', m_fire: '2D: Fire 2012 rising (1D effect as Bar)', m_noise: '2D: Noise2D with the Ocean palette', pick: 'Choose an example…' },
   },
   de: {
     title: 'LED-Streifen-<em>Simulator</em>',
@@ -207,6 +210,8 @@ const T = {
     layout: 'Aufbau', modeStrip: 'Streifen', modeMatrix: 'Matrix (2D)', mw: 'Breite', mh: 'Höhe', startX: 'Start X', stopX: 'Stop X', startY: 'Start Y', stopY: 'Stop Y',
     m12: '1D-Effekt ausdehnen', m12n: ['Pixels', 'Bar', 'Arc', 'Corner'], metaM: '{w} × {h} Matrix · {c} LEDs · {s} Segmente',
     m2dHint: 'Die Matrix-Größe selbst stellst du in WLED unter Config → 2D Configuration ein; das JSON enthält die Segmente mit startY, stopY und m12.',
+    labGroup: 'Labor – nur in diesem Simulator, nicht in WLED', labNote: 'Labor-Effekt: Den gibt es nur in diesem Simulator, WLED kennt ihn nicht. Im JSON steht dieses Segment als Solid.',
+    labExport: 'Labor-Effekte in Segment {l}: WLED kennt sie nicht, darum stehen diese Segmente im JSON als Solid (fx 0).',
     share: 'Link kopieren', linkCopied: 'Link kopiert', linkPrompt: 'Diesen Link kopieren:', linkBad: 'Dieser Link ließ sich nicht lesen, stattdessen ist das Beispiel zu sehen.',
     import: 'Aus WLED übernehmen', importHint: 'Inhalt von http://<deine-wled>/json/state oder einen Eintrag aus presets.json einfügen.', apply: 'Übernehmen',
     importOk: 'Übernommen: {n} Segmente.', importErr: 'Das ist kein gültiges JSON: {m}', unknownFx: 'Effekte, die der Simulator nicht kennt, sind als Solid gezeigt: {l}.', unknownPal: 'Paletten, die er nicht kennt, nutzen Default: {l}.', noSegIn: 'Kein Segment mit Start < Stop gefunden.',
@@ -215,7 +220,7 @@ const T = {
     builtin: 'WLED-Effekte', approx: 'angenähert', ledsShort: 'LEDs', meta: '{c} LEDs · {s} Segmente · {r} Reihen',
     langBtn: 'English', white: 'W',
     foot: 'Die Effekte sind nach dem Quelltext von WLED 16 in JavaScript nachgebaut. Rain, Twinklefox und die beiden Feuerwerke (≈) sind angenähert, und Effekte mit Zufall wiederholen sich nie genau. Farben auf dem Bildschirm sind ein Eindruck, echte LEDs sind heller und satter. Ein unabhängiges Projekt, kein Teil von WLED.',
-    ex: { tour: 'Rundgang: sechs Effekte', fire: 'Fire 2012 mit der Fire-Palette', scanner: 'Scanner mit zwei Punkten', theater: 'Lauflicht, warmweiß', waves: 'Pride 2015 und Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', pacifica: 'Pacifica, Meereswellen', aurora: 'Aurora (Polarlicht)', balls: 'Bouncing Balls und Popcorn', m_hole: '2D: Black Hole, 16 × 16', m_life: '2D: Game of Life', m_polar: '2D: Polar Lights', m_rain: '2D: Matrix-Regen, 32 × 16', m_mix: '2D: Octopus und Plasma Ball', m_fire: '2D: Fire 2012 steigt auf (1D-Effekt als Bar)', m_noise: '2D: Noise2D mit Ocean-Palette', pick: 'Beispiel wählen …' },
+    ex: { tour: 'Rundgang: sechs Effekte', fire: 'Fire 2012 mit der Fire-Palette', scanner: 'Scanner mit zwei Punkten', theater: 'Lauflicht, warmweiß', waves: 'Pride 2015 und Colorwaves', builtin: 'Spots, Candle Multi, Rainbow', lab: 'Labor: Glühwürmchen, Brandung, Neonröhre (nicht in WLED)', m_lab: 'Labor 2D: Sand und Regentropfen (nicht in WLED)', pacifica: 'Pacifica, Meereswellen', aurora: 'Aurora (Polarlicht)', balls: 'Bouncing Balls und Popcorn', m_hole: '2D: Black Hole, 16 × 16', m_life: '2D: Game of Life', m_polar: '2D: Polar Lights', m_rain: '2D: Matrix-Regen, 32 × 16', m_mix: '2D: Octopus und Plasma Ball', m_fire: '2D: Fire 2012 steigt auf (1D-Effekt als Bar)', m_noise: '2D: Noise2D mit Ocean-Palette', pick: 'Beispiel wählen …' },
   },
 };
 let lang = 'en';
@@ -2283,6 +2288,139 @@ add(102, 'Candle Multi@!,!;!,!;!;;sx=96,ix=224,pal=0', (s, t) => {
   }
 });
 
+/* ================= Lab: effects invented for this simulator — they do NOT exist in WLED ================= */
+// Keys are strings ("lab-…") so they can never clash with a WLED effect number. They bring their own default colours.
+const lab = (key, meta, defCol, f) => add('lab-' + key, meta, f, { lab: true, defCol });
+const labDt = (st, t) => { const dt = st.last === undefined ? 0 : Math.min(0.1, Math.max(0, (t - st.last) / 1000)); st.last = t; return dt; };   // seconds since the last frame
+
+// Fireflies: flashing dots that start out of step and synchronise, pulse-coupled like real fireflies
+// (Mirollo–Strogatz: every flash nudges the others' inner clocks forward; whoever reaches the end flashes along)
+lab('fireflies', 'Fireflies@Flash rate,Count,Sync,Glow,,Wander;Firefly,Night;!;1;sx=90,ix=110,c1=30,c2=90,o1=1',
+  [[190, 255, 40, 0], [0, 0, 0, 0], [0, 0, 0, 0]], (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L, n = Math.max(1, Math.min(L, 1 + Math.floor(sp.ix * L / 600)));
+  if (!st.ff || st.ff.length !== n) st.ff = Array.from({ length: n }, () => ({ x: Math.random() * L, v: 0, phase: Math.random(), age: 9, rate: 0.88 + Math.random() * 0.24, hue: rnd(256) }));
+  const dt = labDt(st, t), period = 2.6 - sp.sx / 255 * 1.9, kick = sp.c1 / 255 * 0.12, flashes = [];
+  for (const f of st.ff) { f.phase += dt * f.rate / period; f.age += dt; if (f.phase >= 1) flashes.push(f); }
+  for (let k = 0; k < flashes.length; k++) {
+    const src = flashes[k]; src.phase = 0; src.age = 0;
+    for (const f of st.ff) if (f.age > 0.05 && f.phase > 0) { f.phase += kick; if (f.phase >= 1 && !flashes.includes(f)) flashes.push(f); }
+  }
+  if (sp.o1) for (const f of st.ff) { f.v = f.v * 0.97 + (Math.random() - 0.5) * dt * 3; f.x += f.v * dt * 4; if (f.x < 0) { f.x = 0; f.v = -f.v; } if (f.x > L - 1) { f.x = L - 1; f.v = -f.v; } }
+  fill(s, sp.col[1]);
+  const glow = 0.6 + sp.c2 / 255 * 3.4;
+  for (const f of st.ff) {
+    const b = f.age < 0.06 ? f.age / 0.06 : Math.max(0, 1 - (f.age - 0.06) / 0.45); if (b <= 0) continue;   // quick rise, about half a second to fade
+    const c = sp.pal ? cfp(s, f.hue, false, 0) : sp.col[0], e = b * b;
+    for (let i = Math.floor(f.x - glow); i <= Math.ceil(f.x + glow); i++) { const d = Math.abs(i + 0.5 - f.x) / glow; if (d < 1) putMax(s, i, c, e * (1 - d * d)); }
+  }
+});
+
+// Surf: waves run up the beach with a foam crest and pull back slowly; every few waves a bigger one comes.
+// The sea is at the start of the segment, the beach at the end (use "reverse" for the other way round).
+lab('surf', 'Surf@Wave speed,Wave height,Foam,Big wave every;Water,Foam,Sand;;1;sx=110,ix=170,c1=150,c2=96',
+  [[0, 90, 200, 0], [235, 245, 255, 0], [110, 78, 30, 0]], (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L, dt = labDt(st, t);
+  if (!st.wet || st.wet.length !== L) Object.assign(st, { wave: 0, start: t, amp: 0.8, wet: new Float32Array(L), foam: new Float32Array(L) });
+  const period = 2600 + (255 - sp.sx) * 18; let p = (t - st.start) / period;
+  if (p >= 1) { st.start = t; p = 0; st.wave++; st.amp = st.wave % (2 + (sp.c2 >> 5)) === 0 ? 1 : 0.55 + Math.random() * 0.3; }
+  const up = 0.3, reach = p < up ? 1 - Math.pow(1 - p / up, 2) : 1 - Math.pow((p - up) / (1 - up), 1.6);   // fast run-up, slow backwash
+  const calm = 0.42, edge = L * (calm + (sp.ix / 255) * 0.55 * st.amp * reach), foamW = 1 + sp.c1 / 255 * Math.max(2, L * 0.06);
+  const water = sp.col[0], foam = sp.col[1], sand = sp.col[2], deep = fadeC(water, 70), wetSand = fadeC(sand, 120);
+  for (let i = 0; i < L; i++) {
+    if (i < edge) st.wet[i] = 1; else st.wet[i] = Math.max(0, st.wet[i] - dt / 6);                       // wet sand dries in about 6 s
+    if (p >= up && i >= edge && i < edge + foamW * 1.5 && hashF(i * 7 + st.wave) > 0.45) st.foam[i] = Math.max(st.foam[i], 0.8);   // foam left behind
+    st.foam[i] = Math.max(0, st.foam[i] - dt * 0.7);
+    let c;
+    if (i < edge) {
+      const depth = 1 - i / Math.max(1, edge), shimmer = 0.82 + 0.18 * Math.sin(i * 0.7 - t * 0.004 * (1 + sp.sx / 255));
+      c = fadeC(mix(water, deep, depth * 0.8), Math.round(255 * shimmer)); const d = edge - i;
+      if (d < foamW) c = mix(c, foam, Math.pow(1 - d / foamW, 2));
+    } else { c = mix(sand, wetSand, st.wet[i] * 0.8); if (st.foam[i] > 0) c = mix(c, foam, st.foam[i] * 0.6); }
+    put(s, i, c);
+  }
+});
+
+// Neon Tube: lights up like a real tube with flickering and striking, then hums steadily and fails now and then
+// (short dropout, flutter, or one end going dim). Press "Restart" to see the ignition again.
+lab('neon', 'Neon Tube@Hum,Faults,Ignition time;Tube,Background;;1;sx=60,ix=40,c1=110',
+  [[255, 30, 90, 0], [0, 0, 0, 0], [0, 0, 0, 0]], (s, t) => {
+  const sp = s.sp, st = s.st, L = s.L, dt = labDt(st, t);
+  if (st.t0 === undefined) Object.assign(st, { t0: t, flash: 0, fault: null });
+  const ign = 400 + sp.c1 / 255 * 3600, el = t - st.t0; let bri = 1, dimEnd = 0;
+  if (el < ign) {                                                    // ignition: dark with random strikes that get more frequent
+    const q = el / ign; st.flash = Math.max(0, st.flash - dt * 9);
+    if (Math.random() < 0.04 + q * 0.35) st.flash = 0.3 + Math.random() * 0.7;
+    bri = st.flash * (0.4 + q * 0.6);
+  } else {
+    bri = 0.96 + (sp.sx / 255) * 0.04 * (perlin8(Math.floor(t / 3), 77) - 128) / 64;   // steady, with a slow hum
+    if (!st.fault && Math.random() < dt * (sp.ix / 255) * 0.6) {
+      const k = Math.random(); st.fault = { type: k < 0.45 ? 'drop' : k < 0.8 ? 'flutter' : 'end', start: t, dur: k < 0.45 ? 60 + Math.random() * 160 : k < 0.8 ? 300 + Math.random() * 400 : 800 + Math.random() * 1200 };
+    }
+    const f = st.fault;
+    if (f) { const a = (t - f.start) / f.dur;
+      if (a >= 1) st.fault = null;
+      else if (f.type === 'drop') bri = a > 0.85 ? 1.2 : 0.02;                 // goes dark, then strikes back a bit too bright
+      else if (f.type === 'flutter') bri *= 0.35 + 0.65 * (Math.sin(a * 40) > 0 ? 1 : 0.3);
+      else dimEnd = Math.sin(a * Math.PI); }
+  }
+  const tube = sp.col[0], bg = sp.col[1];
+  for (let i = 0; i < L; i++) {
+    const end = L > 4 && (i === 0 || i === L - 1) ? 0.75 : 1;              // the electrodes at both ends are a little darker
+    const tail = dimEnd ? 1 - dimEnd * 0.8 * Math.max(0, (i / Math.max(1, L - 1) - 0.6) / 0.4) : 1;
+    const v = Math.max(0, Math.min(1, bri * end * tail * (0.97 + 0.03 * (perlin8(i * 40, Math.floor(t / 20)) - 128) / 128)));
+    put(s, i, mix(bg, tube, v));
+  }
+});
+
+// Sand: grains trickle from a wandering spout, slide off each other into dunes; when it is full, the floor opens.
+lab('sand', 'Sand@Speed,Grain rate,Colour change,,,Auto drain;Sand,Background;!;2;sx=170,ix=170,c1=60,o1=1',
+  [[230, 170, 70, 0], [0, 0, 0, 0], [0, 0, 0, 0]], (s, t) => {
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, N = W * H;
+  if (!st.occ || st.occ.length !== N) Object.assign(st, { occ: new Uint8Array(N), hue: new Uint8Array(N), shade: new Uint8Array(N), drain: false, flip: 0, count: 0 });
+  const steps = 1 + (sp.sx >> 6), ex = Math.round((W - 1) * (0.5 + 0.42 * Math.sin(t / 2300) * Math.cos(t / 3700)));
+  const hueNow = Math.floor(t / 1000 * (sp.c1 / 255) * 40) & 255;
+  for (let n = 0; n < steps; n++) {
+    if (!st.drain && rnd(256) < sp.ix) { const x = Math.max(0, Math.min(W - 1, ex + rnd(3) - 1)); if (!st.occ[x]) { st.occ[x] = 1; st.hue[x] = (hueNow + rnd(12)) & 255; st.shade[x] = 150 + rnd(106); st.count++; } }
+    if (st.drain) for (let x = 0; x < W; x++) { const i = (H - 1) * W + x; if (st.occ[i]) { st.occ[i] = 0; st.count--; } }   // floor open: the bottom row falls out
+    st.flip ^= 1;
+    for (let y = H - 2; y >= 0; y--) for (let k = 0; k < W; k++) {
+      const x = st.flip ? k : W - 1 - k, i = y * W + x; if (!st.occ[i]) continue;
+      let to = -1; const b = i + W;
+      if (!st.occ[b]) to = b;
+      else { const d = Math.random() < 0.5 ? -1 : 1;
+        for (const dx of [d, -d]) { const nx = x + dx; if (nx >= 0 && nx < W && !st.occ[b + dx] && !st.occ[i + dx]) { to = b + dx; break; } } }
+      if (to >= 0) { st.occ[to] = 1; st.hue[to] = st.hue[i]; st.shade[to] = st.shade[i]; st.occ[i] = 0; }
+    }
+    if (sp.o1 && !st.drain && (st.count > N * 0.8 || st.occ[ex])) st.drain = true;
+    if (st.drain && st.count <= 0) { st.drain = false; st.count = 0; }
+  }
+  for (let i = 0; i < N; i++) put(s, i, st.occ[i] ? (sp.pal ? cfp(s, st.hue[i], false, 0, st.shade[i]) : fadeC(sp.col[0], st.shade[i])) : sp.col[1]);
+});
+
+// Raindrops: a real wave simulation — drops hit the surface, rings spread, bounce off the edges and overlap.
+lab('raindrops', 'Raindrops@Rain,Damping,Drop size,Wave speed;Light,Water;!;2;sx=90,ix=60,c1=60,c2=128',
+  [[150, 215, 255, 0], [0, 18, 55, 0], [0, 0, 0, 0]], (s, t) => {
+  const sp = s.sp, st = s.st, W = s.W, H = s.H, N = W * H;
+  if (!st.a || st.a.length !== N) Object.assign(st, { a: new Float32Array(N), b: new Float32Array(N) });
+  if (Math.random() < sp.sx / 255 * 0.3) {
+    const cx = rnd(W), cy = rnd(H), r = 0.8 + sp.c1 / 255 * 2.7;
+    for (let y = Math.max(0, Math.floor(cy - r)); y <= Math.min(H - 1, Math.ceil(cy + r)); y++)
+      for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(W - 1, Math.ceil(cx + r)); x++) { const d = Math.hypot(x - cx, y - cy) / r; if (d < 1) st.a[y * W + x] -= 220 * (1 - d * d); }
+  }
+  const damp = 1 - (0.004 + sp.ix / 255 * 0.08), steps = 1 + (sp.c2 >> 7), at = (arr, x, y) => arr[Math.max(0, Math.min(H - 1, y)) * W + Math.max(0, Math.min(W - 1, x))];
+  for (let n = 0; n < steps; n++) {
+    const a = st.a, b = st.b;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; b[i] = ((at(a, x - 1, y) + at(a, x + 1, y) + at(a, x, y - 1) + at(a, x, y + 1)) / 2 - b[i]) * damp; }
+    st.a = b; st.b = a;
+  }
+  const h = st.a, light = sp.col[0], water = sp.col[1];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const v = at(h, x, y), slope = (at(h, x + 1, y) - at(h, x - 1, y)) + (at(h, x, y + 1) - at(h, x, y - 1));
+    const k = Math.max(0, Math.min(1, Math.abs(v) / 110 + Math.max(0, slope) / 160));
+    put(s, y * W + x, sp.pal ? cfp(s, 128 + Math.round(Math.max(-127, Math.min(127, v))), false, 0, 60 + Math.round(195 * k)) : mix(water, light, k));
+  }
+});
+
 /* ================= metadata (same format as WLED) ================= */
 function parseMeta(meta) {
   const at = meta.indexOf('@'), name = at < 0 ? meta : meta.slice(0, at);
@@ -2308,6 +2446,7 @@ const runtime = new WeakMap();
 function applyDefaults(s) {
   Object.assign(s, { sx: 128, ix: 128, c1: 128, c2: 128, c3: 16, o1: false, o2: false, o3: false });
   const d = FX[s.fx].info.def; for (const k in d) { if (k === 'pal') s.pal = d[k]; else s[k] = k[0] === 'o' ? !!d[k] : d[k]; }
+  if (FX[s.fx].defCol) s.col = FX[s.fx].defCol.map(c => c.slice());   // lab effects only; WLED keeps the colours
 }
 function newSeg(start, stop, fx = 85, opts = {}) {
   const s = { id: 0, start, stop, y0: 0, y1: 1, m12: 0, on: true, bri: 255, fx, pal: 0, rev: false, col: [[255, 170, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
@@ -2366,6 +2505,8 @@ const EX = {
   pacifica: { count: 150, rgbw: false, bri: 190, segs: [[101, 0, 150, {}]] },
   aurora: { count: 150, rgbw: false, bri: 190, segs: [[38, 0, 150, {}]] },
   balls: { count: 120, rgbw: false, bri: 200, segs: [[91, 0, 60, { ix: 128 }], [95, 60, 120, { pal: 6 }]] },
+  lab: { count: 300, rgbw: false, bri: 200, segs: [['lab-fireflies', 0, 100, {}], ['lab-surf', 100, 200, {}], ['lab-neon', 200, 300, {}]] },
+  m_lab: { m2d: true, w: 32, h: 16, rgbw: false, bri: 190, segs: [['lab-sand', 0, 16, {}], ['lab-raindrops', 16, 32, {}]] },
   m_hole: { m2d: true, w: 16, h: 16, rgbw: false, bri: 170, segs: [[183, 0, 16, {}]] },
   m_life: { m2d: true, w: 32, h: 16, rgbw: false, bri: 170, segs: [[172, 0, 32, {}]] },
   m_polar: { m2d: true, w: 32, h: 16, rgbw: false, bri: 180, segs: [[174, 0, 32, {}]] },
@@ -2497,8 +2638,11 @@ function el(tag, attrs = {}, kids = []) { const e = document.createElement(tag);
 
 function fxOptions(sel, cur) {
   const sorted = Object.keys(FX).sort((a, b) => FX[a].info.name.localeCompare(FX[b].info.name));
+  const gW = el('optgroup', { label: t('builtin') }), gL = el('optgroup', { label: t('labGroup') });
   for (const k of sorted) { const f = FX[k]; if (f.info.only2D && !strip.m2d && String(k) !== String(cur)) continue;
-    const o = el('option', { value: String(k), text: f.info.name + (f.approx ? ' (≈)' : '') + (f.info.only2D ? ' (2D)' : '') + ' · ' + k }); if (String(k) === String(cur)) o.selected = true; sel.appendChild(o); }
+    const o = el('option', { value: String(k), text: f.info.name + (f.approx ? ' (≈)' : '') + (f.info.only2D ? ' (2D)' : '') + (f.lab ? '' : ' · ' + k) });
+    if (String(k) === String(cur)) o.selected = true; (f.lab ? gL : gW).appendChild(o); }
+  sel.appendChild(gW); if (gL.childNodes.length) sel.appendChild(gL);
 }
 const fxKey = v => (/^\d+$/.test(v) ? +v : v);
 
@@ -2537,6 +2681,7 @@ function segCard(s, si) {
     ms.addEventListener('change', () => { s.m12 = +ms.value; updateOut(); });
     card.appendChild(el('div', { class: 'row' }, [el('div', { class: 'field' }, [el('span', { class: 'lbl', text: t('m12') }), ms])]));
   }
+  if (FX[s.fx].lab) card.appendChild(el('p', { class: 'warn', text: t('labNote') }));
   const over = segs.findIndex((o, j) => j !== si && o.start < s.stop && s.start < o.stop && (!strip.m2d || (o.y0 < s.y1 && s.y0 < o.y1)));
   if (over >= 0) card.appendChild(el('p', { class: 'warn', text: t('overlap', { n: over }) }));
 
@@ -2572,7 +2717,7 @@ function renderSegs() {
 function drawMeta() { $('meta').innerHTML = ''; $('meta').appendChild(el('span', { text: strip.m2d ? t('metaM', { w: strip.w, h: strip.h, c: strip.w * strip.h, s: segs.length }) : t('meta', { c: strip.count, s: segs.length, r: geo ? geo.rows : 1 }) })); }
 
 function segJson(s) {
-  const o = { id: s.id, start: s.start, stop: s.stop, on: s.on, bri: s.bri, fx: s.fx, sx: s.sx, ix: s.ix };
+  const o = { id: s.id, start: s.start, stop: s.stop, on: s.on, bri: s.bri, fx: FX[s.fx].lab ? 0 : s.fx, sx: s.sx, ix: s.ix };
   const ctl = FX[s.fx].info.ctl.map(c => c.k);
   for (const k of ['c1', 'c2', 'c3']) if (ctl.includes(k)) o[k] = s[k];
   for (const k of ['o1', 'o2', 'o3']) if (ctl.includes(k)) o[k] = !!s[k];
@@ -2584,6 +2729,7 @@ function updateOut() {
   const lines = ['{', `  "on": true,`, `  "bri": ${strip.bri},`, '  "seg": ['];
   segs.forEach((s, i) => lines.push('    ' + JSON.stringify(segJson(s)) + (i < segs.length - 1 ? ',' : '')));
   lines.push('  ]', '}'); $('out').textContent = lines.join('\n'); $('copyMsg').hidden = true;
+  const labSegs = segs.filter(x => FX[x.fx].lab).map(x => x.id); $('labOut').hidden = !labSegs.length; if (labSegs.length) $('labOut').textContent = t('labExport', { l: labSegs.join(', ') });
   saveHash();
 }
 
@@ -2626,7 +2772,7 @@ function doImport() {
   if (info.leds && typeof info.leds.rgbw === 'boolean') strip.rgbw = info.leds.rgbw; else strip.rgbw = raw.some(x => (x.col || []).some(c => Array.isArray(c) && c.length > 3 && c[3] > 0));
   segs = raw.map(x => {
     let fx = x.fx ?? 0;
-    if (typeof fx === 'string') { const hit = Object.keys(FX).find(k => FX[k].info.name.toLowerCase() === fx.toLowerCase()); fx = hit !== undefined ? fxKey(hit) : (unknown.push(fx), 0); }
+    if (typeof fx === 'string') { const hit = Object.keys(FX).find(k => !FX[k].lab && FX[k].info.name.toLowerCase() === fx.toLowerCase()); fx = hit !== undefined ? fxKey(hit) : (unknown.push(fx), 0); }
     else if (!FX[fx]) { unknown.push(fx); fx = 0; }
     const s = newSeg(x.start | 0, x.stop | 0, fx);
     for (const k of ['sx', 'ix', 'c1', 'c2', 'c3', 'bri', 'pal']) if (typeof x[k] === 'number') s[k] = x[k];
