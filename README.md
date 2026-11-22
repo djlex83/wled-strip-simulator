@@ -88,7 +88,7 @@ Good to know:
 
 ## Lab effects (not in WLED)
 
-Five effects were invented for this simulator. **WLED does not have them**, so you cannot send them to your WLED.
+Ten effects were invented for this simulator. **WLED does not have them**, so you cannot send them to your WLED.
 They sit in their own group *Lab – only in this simulator, not in WLED* in the effect list, every segment that uses one
 says so, and the JSON sends such a segment as *Solid* (fx 0) with a warning above it.
 
@@ -99,6 +99,14 @@ says so, and the JSON sends such a segment as *Solid* (fx 0) with a warning abov
 | Neon Tube | Strip | Lights up like a real tube with flickering strikes, then hums and fails now and then |
 | Sand | Matrix | Grains trickle from a wandering spout and slide into dunes; when the pile reaches the spout, the floor opens |
 | Raindrops | Matrix | A wave simulation: drops hit the water, rings spread, bounce off the edges and overlap |
+| Embers | Strip | Coals in lumps glow and breathe, some under grey ash; gusts run along the bed, fan the coals and throw sparks |
+| Shooting Stars | Strip | Twinkling stars; meteors streak across and burn up, bright ones flare before they go out, now and then a shower |
+| Morse | Strip | Sends your text in Morse code, as a blinking signal lamp or with *Tape* as dots and dashes running along the strip |
+| Snowstorm | Matrix | Flakes of different sizes drift in wind and gusts; with *Snow cover* they settle, slide off heaps and blow along |
+| Lava Lamp | Matrix | Wax heats up in the pool, rises, cools at the top and sinks; blobs melt together where they meet |
+
+Morse has a text field in its segment card (letters, digits, ÄÖÜ and common punctuation, up to 40 characters).
+The text is part of the share link but not of the JSON, because WLED has no such effect.
 
 ## Running it locally
 
